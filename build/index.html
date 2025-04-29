@@ -1,0 +1,41 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Ollama Spielwiese</title>
+    <link rel="stylesheet" href="style.css" />
+  <script defer src="renderer.js"></script></head>
+  <body>
+
+    <div class="left">
+      <div id="chat-log"></div>
+  
+      <textarea id="prompt" rows="4" placeholder="Write anything"></textarea>
+      <button id="send">Submit</button>
+    </div>
+  
+    <div class="right">
+      <label for="model-select">Select a model:</label>
+      <select id="model-select"></select>
+  
+      <label>System Prompt:</label>
+      <textarea id="system-prompt" rows="2" placeholder="Describe the role and character of the assistant"></textarea>
+  
+      <label>Temperature:</label>
+      <input type="number" id="temperature" value="0.7" step="0.1" min="0" max="1">
+  
+      <label>Top P:</label>
+      <input type="number" id="top_p" value="0.9" step="0.1" min="0" max="1">
+  
+      <label>Top K:</label>
+      <input type="number" id="top_k" value="40" step="1">
+  
+      <label>Seed:</label>
+      <input type="number" id="seed" value="42" step="1">
+  
+      <button onclick="resetChat()">New Chat</button>
+      <button onclick="exportChat()">Export Chat</button>
+    </div>
+  
+  </body>
+  </html>

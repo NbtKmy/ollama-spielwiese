@@ -1,0 +1,32 @@
+/*
+ * ATTENTION: The "eval" devtool has been used (maybe by default in mode: "development").
+ * This devtool is neither made for production nor for readable output files.
+ * It uses "eval()" calls to create a separate source file in the browser devtools.
+ * If you are trying to read the output file, select a different devtool (https://webpack.js.org/configuration/devtool/)
+ * or disable the default devtool with "devtool: false".
+ * If you are looking for production-ready output files, see mode: "production" (https://webpack.js.org/configuration/mode/).
+ */
+/******/ (() => { // webpackBootstrap
+/******/ 	var __webpack_modules__ = ({
+
+/***/ "./src/renderer.js":
+/*!*************************!*\
+  !*** ./src/renderer.js ***!
+  \*************************/
+/***/ (() => {
+
+eval("let messages = [];\nlet isChatActive = false;\n\nasync function loadModels() {\n    try {\n      const res = await fetch('http://localhost:3000/models');\n      const data = await res.json();\n      const select = document.getElementById('model-select');\n  \n      data.models.forEach(model => {\n        const option = document.createElement('option');\n        option.value = model;\n        option.textContent = model;\n        select.appendChild(option);\n      });\n    } catch (err) {\n      console.error('Error retrieving model list:', err);\n    }\n  }\n  \n  window.addEventListener('DOMContentLoaded', () => {\n    loadModels();\n  \n    document.getElementById('send').addEventListener('click', async () => {\n      const prompt = document.getElementById('prompt').value;\n      const systemPrompt = document.getElementById('system-prompt').value;\n  \n      const model = document.getElementById('model-select').value;\n      const temperature = parseFloat(document.getElementById('temperature').value);\n      const top_p = parseFloat(document.getElementById('top_p').value);\n      const top_k = parseInt(document.getElementById('top_k').value);\n      const seed = parseInt(document.getElementById('seed').value);\n\n      if (!isChatActive) {\n        messages = [];\n        if (systemPrompt) {\n          messages.push({ role: 'system', content: systemPrompt });\n        }\n        isChatActive = true;\n        lockParamsUI(true);\n      }\n\n      appendMessage('user', prompt);\n      messages.push({ role: 'user', content: prompt });\n      document.getElementById('prompt').value = '';\n  \n      const res = await fetch('http://localhost:3000/chat-stream', {\n        method: 'POST',\n        headers: { 'Content-Type': 'application/json' },\n        body: JSON.stringify({\n          model,\n          messages,\n          temperature,\n          top_p,\n          top_k,\n          seed\n        }),\n      });\n  \n      const reader = res.body.getReader();\n      const decoder = new TextDecoder();\n      let assistantReply = '';\n      const assistantEntry = createMessageEntry('assistant');\n  \n      while (true) {\n        const { done, value } = await reader.read();\n        if (done) break;\n        const chunk = decoder.decode(value);\n        assistantReply += chunk;\n        assistantEntry.textContent = assistantReply;\n      }\n\n      messages.push({ role: 'assistant', content: assistantReply });\n    });\n  });\n\nfunction lockParamsUI(lock) {\n    const fields = ['model-select', 'temperature', 'top_p', 'top_k', 'seed', 'system-prompt'];\n    fields.forEach(id => {\n        const el = document.getElementById(id);\n        el.disabled = lock;\n        el.style.opacity = lock ? 0.5 : 1;\n    });\n}\n\nfunction appendMessage(role, text) {\n    const log = document.getElementById('chat-log');\n    const entry = document.createElement('div');\n    entry.className = role; // ← class名でスタイル適用\n  \n    const strong = document.createElement('strong');\n    strong.textContent = `${role === 'user' ? '🧑‍💻 User' : '🤖 Assistant'}:`;\n    const content = document.createElement('div');\n    content.textContent = text;\n  \n    entry.appendChild(strong);\n    entry.appendChild(content);\n    log.appendChild(entry);\n    log.scrollTop = log.scrollHeight;\n  }\n\nfunction createMessageEntry(role) {\n    const log = document.getElementById('chat-log');\n    const entry = document.createElement('div');\n    entry.className = role; \n    const strong = document.createElement('strong');\n    strong.textContent = `${role === 'user' ? '🧑‍💻 User' : '🤖 Assistant'}:`;\n    const content = document.createElement('div');\n    \n    entry.appendChild(strong);\n    entry.appendChild(content);\n\n    log.appendChild(entry);\n    log.scrollTop = log.scrollHeight;\n\n    return content;\n}\n\n\n\nfunction resetChat() {\n    messages = [];\n    isChatActive = false;\n    lockParamsUI(false);\n    document.getElementById('chat-log').innerHTML = '';\n    document.getElementById('prompt').value = '';\n  }\n\nwindow.resetChat = resetChat;\n\nfunction exportChat() {\n    const systemPrompt = document.getElementById('system-prompt').value;\n    const model = document.getElementById('model-select').value;\n    const temperature = parseFloat(document.getElementById('temperature').value);\n    const top_p = parseFloat(document.getElementById('top_p').value);\n    const top_k = parseInt(document.getElementById('top_k').value);\n    const seed = parseInt(document.getElementById('seed').value);\n  \n    const data = {\n      model,\n      systemPrompt,\n      parameters: { temperature, top_p, top_k, seed },\n      history: messages\n    };\n  \n    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });\n    const link = document.createElement('a');\n    link.href = URL.createObjectURL(blob);\n    link.download = `chat-${new Date().toISOString().replace(/[:.]/g, '-')}.json`;\n    link.click();\n  }\nwindow.exportChat = exportChat;\n\n//# sourceURL=webpack://ollama-spielwiese/./src/renderer.js?");
+
+/***/ })
+
+/******/ 	});
+/************************************************************************/
+/******/ 	
+/******/ 	// startup
+/******/ 	// Load entry module and return exports
+/******/ 	// This entry module can't be inlined because the eval devtool is used.
+/******/ 	var __webpack_exports__ = {};
+/******/ 	__webpack_modules__["./src/renderer.js"]();
+/******/ 	
+/******/ })()
+;
