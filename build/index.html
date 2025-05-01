@@ -5,36 +5,96 @@
     <title>Ollama Spielwiese</title>
     <link rel="stylesheet" href="style.css" />
   <script defer src="renderer.js"></script></head>
-  <body>
+  <body class="dark bg-gray-900 text-white flex h-screen">
 
-    <div class="left">
-      <div id="chat-log"></div>
+    <div class="left p-4 w-2/3 border-r border-gray-700 overflow-y-auto flex flex-col">
+      <div id="chat-log" class="flex flex-col gap-2 mb-4 overflow-y-auto flex-1"></div>
   
-      <textarea id="prompt" rows="4" placeholder="Write anything"></textarea>
-      <button id="send">Submit</button>
+      <textarea id="prompt" class="bg-gray-800 p-2 rounded text-white" rows="4" placeholder="Write anything"></textarea>
+      <button id="send" class="mt-2 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded">Submit</button>
     </div>
   
-    <div class="right">
+    <div class="right p-4 w-1/3 bg-gray-800 dark:bg-gray-800 flex flex-col gap-2">
       <label for="model-select">Select a model:</label>
-      <select id="model-select"></select>
-  
-      <label>System Prompt:</label>
-      <textarea id="system-prompt" rows="2" placeholder="Describe the role and character of the assistant"></textarea>
-  
-      <label>Temperature:</label>
-      <input type="number" id="temperature" value="0.7" step="0.1" min="0" max="1">
-  
-      <label>Top P:</label>
-      <input type="number" id="top_p" value="0.9" step="0.1" min="0" max="1">
-  
-      <label>Top K:</label>
-      <input type="number" id="top_k" value="40" step="1">
-  
-      <label>Seed:</label>
-      <input type="number" id="seed" value="42" step="1">
-  
-      <button onclick="resetChat()">New Chat</button>
-      <button onclick="exportChat()">Export Chat</button>
+      <select id="model-select" class="bg-gray-700 text-white p-2 rounded"></select>
+      
+      <div class="relative">
+        <label class="text-sm flex items-center gap-1">
+            System prompt
+            <span class="relative group cursor-help text-blue-300">
+              ⓘ
+              <div class="absolute left-full ml-2 top-0 hidden group-hover:block bg-gray-900 text-white text-xs p-2 rounded shadow-lg w-48 z-10">
+                System message to overrides what is defined in the Modelfile
+              </div>
+            </span>
+          </label>
+        <textarea id="system-prompt" class="bg-gray-700 text-white p-2 rounded" rows="2" placeholder="Describe the role and character of the assistant"></textarea>
+      </div>
+
+      <div class="relative">
+        <label class="text-sm flex items-center gap-1">
+            Temperature
+            <span class="relative group cursor-help text-blue-300">
+              ⓘ
+              <div class="absolute left-full ml-2 top-0 hidden group-hover:block bg-gray-900 text-white text-xs p-2 rounded shadow-lg w-48 z-10">
+                The temperature of the model. Increasing the temperature will make the model answer more creatively. (Value: 0-1; Default: 0.7)
+              </div>
+            </span>
+          </label>
+        <input type="number" id="temperature" class="bg-gray-700 text-white p-2 rounded" value="0.7" step="0.1" min="0" max="1">
+      </div>
+
+      <div class="relative">
+        <label class="text-sm flex items-center gap-1">
+            Top P
+            <span class="relative group cursor-help text-blue-300">
+              ⓘ
+              <div class="absolute left-full ml-2 top-0 hidden group-hover:block bg-gray-900 text-white text-xs p-2 rounded shadow-lg w-48 z-10">
+                Works together with top-k. A higher value (e.g., 0.95) will lead to more diverse text, while a lower value (e.g., 0.5) will generate more focused and conservative text. (Value: 0-1; Default: 0.9)
+              </div>
+            </span>
+          </label>
+        <input type="number" id="top_p" class="bg-gray-700 text-white p-2 rounded" value="0.9" step="0.1" min="0" max="1">
+      </div>
+
+      <div class="relative">
+        <label class="text-sm flex items-center gap-1">
+            Top K
+            <span class="relative group cursor-help text-blue-300">
+              ⓘ
+              <div class="absolute left-full ml-2 top-0 hidden group-hover:block bg-gray-900 text-white text-xs p-2 rounded shadow-lg w-48 z-10">
+                Reduces the probability of generating nonsense. A higher value (e.g. 100) will give more diverse answers, while a lower value (e.g. 10) will be more conservative. (Default: 40)
+              </div>
+            </span>
+          </label>
+        <input type="number" id="top_k" class="bg-gray-700 text-white p-2 rounded" value="40" step="1">
+      </div>
+
+      <div class="relative">
+        <label class="text-sm flex items-center gap-1">
+            Seed
+            <span class="relative group cursor-help text-blue-300">
+              ⓘ
+              <div class="absolute left-full ml-2 top-0 hidden group-hover:block bg-gray-900 text-white text-xs p-2 rounded shadow-lg w-48 z-10">
+                Sets the random number seed to use for generation. Setting this to a specific number will make the model generate the same text for the same prompt. (Default: 0)
+              </div>
+            </span>
+          </label>
+        <input type="number" id="seed" class="bg-gray-700 text-white p-2 rounded" value="42" step="1">
+      </div>
+
+      <button class="mt-2 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded" onclick="resetChat()">New Chat</button>
+      <button class="mt-2 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded" onclick="exportChat()">Export Chat</button>
+      <button id="use-rag" class="bg-blue-600 text-white px-4 py-2 rounded">Use RAG</button>
+        <input type="file" id="rag-file-input" class="hidden" multiple />
+      <label class="flex items-center gap-2 mt-2">
+        <input type="checkbox" id="use-rag-checkbox" class="accent-blue-600" />
+        <span>Apply RAG</span>
+      </label>
+    </div>
+    <div class="p-4 w-1/4 bg-gray-900 text-white border-l border-gray-700">
+        <h3 class="text-sm font-bold mb-2">📂 RAG Texts</h3>
+        <ul id="rag-file-list" class="space-y-1 text-sm"></ul>
     </div>
   
   </body>

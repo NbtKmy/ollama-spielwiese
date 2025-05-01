@@ -4,14 +4,26 @@ const CopyWebpackPlugin = require('copy-webpack-plugin');
 
 module.exports = {
   mode: 'development',
-  entry: './src/renderer.js',
+  entry: {
+    renderer: './src/renderer.js',
+  },
   output: {
     path: path.resolve(__dirname, 'build'),
-    filename: 'renderer.js',
+    filename: '[name].js',
+  },
+  module: {
+    rules: [
+      {
+        test: /\.css$/,
+        use: ['style-loader', 'css-loader', 'postcss-loader'],
+      },
+    ],
   },
   plugins: [
     new HtmlWebpackPlugin({
       template: './public/index.html',
+      filename: 'index.html',
+      chunks: ['renderer'],
     }),
     new CopyWebpackPlugin({
         patterns: [
@@ -19,4 +31,7 @@ module.exports = {
         ],
     }),
   ],
+  externals: {
+    'pdfjs-dist': 'commonjs2 pdfjs-dist',
+  }
 };

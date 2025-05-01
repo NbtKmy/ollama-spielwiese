@@ -39,18 +39,29 @@
   },
   "homepage": "https://github.com/NbtKmy/ollama-spielwiese#readme",
   "devDependencies": {
+    "autoprefixer": "^10.4.21",
     "copy-webpack-plugin": "^13.0.0",
+    "css-loader": "^7.1.2",
     "electron": "^35.2.1",
     "electron-builder": "^26.0.12",
     "html-webpack-plugin": "^5.6.3",
+    "postcss": "^8.5.3",
+    "postcss-loader": "^8.1.1",
+    "style-loader": "^4.0.0",
+    "tailwindcss": "^3.4.17",
     "webpack": "^5.99.6",
     "webpack-cli": "^6.0.1",
     "webpack-dev-server": "^5.2.1"
   },
   "dependencies": {
+    "@langchain/community": "^0.3.42",
+    "@langchain/ollama": "^0.2.0",
     "axios": "^1.8.4",
     "body-parser": "^2.2.0",
     "cors": "^2.8.5",
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "gray-matter": "^4.0.3",
+    "langchain": "^0.3.24",
+    "pdfjs-dist": "2.14.305"
   }
 }

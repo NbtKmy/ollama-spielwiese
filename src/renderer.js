@@ -1,3 +1,5 @@
+import '../public/style.css';
+
 let messages = [];
 let isChatActive = false;
 
@@ -18,7 +20,8 @@ async function loadModels() {
     }
   }
   
-  window.addEventListener('DOMContentLoaded', () => {
+  window.addEventListener('DOMContentLoaded', async () => {
+    await window.ragAPI.loadVectorStore();
     loadModels();
   
     document.getElementById('send').addEventListener('click', async () => {
@@ -30,6 +33,7 @@ async function loadModels() {
       const top_p = parseFloat(document.getElementById('top_p').value);
       const top_k = parseInt(document.getElementById('top_k').value);
       const seed = parseInt(document.getElementById('seed').value);
+      const useRag = document.getElementById('use-rag-checkbox').checked;
 
       if (!isChatActive) {
         messages = [];
@@ -41,7 +45,26 @@ async function loadModels() {
       }
 
       appendMessage('user', prompt);
-      messages.push({ role: 'user', content: prompt });
+      if (useRag) {
+        const results = await window.ragAPI.searchFromStore(prompt);
+        console.log('[RAG] 検索結果:', results);
+        if (results.length === 0) {
+            alert('Reference information not found. Send as normal chat.');
+            messages.push({ role: 'user', content: prompt });
+          } else {
+            const context = results.map(doc => doc.pageContent).join('\n---\n');
+            messages.push({
+                role: 'user',
+                content: `Answer the question based on the following references:\n${context}\n\nQuestion: ${prompt}`
+              });
+          }
+      } else {
+        messages.push({
+          role: 'user',
+          content: prompt
+        });
+      }
+      //messages.push({ role: 'user', content: prompt });
       document.getElementById('prompt').value = '';
   
       const res = await fetch('http://localhost:3000/chat-stream', {
@@ -150,3 +173,38 @@ function exportChat() {
     link.click();
   }
 window.exportChat = exportChat;
+
+document.getElementById('use-rag').addEventListener('click', async () => {
+    const paths = await window.ragAPI.openFileDialog();
+    for (const filePath of paths) {
+      const chunks = await window.ragAPI.readAndSplit(filePath);
+      await window.ragAPI.saveChunksToMemory(chunks);
+    }
+    await refreshRagFileList();
+  });
+
+/*
+document.getElementById('open-rag').addEventListener('click', () => {
+    window.electronAPI.openRagWindow();
+  });
+  */
+
+document.getElementById('rag-file-input').addEventListener('change', async (event) => {
+    const files = Array.from(event.target.files);
+    for (const file of files) {
+      const chunks = await window.ragAPI.readAndSplit(file.path);
+      await window.ragAPI.saveChunksToMemory(chunks);
+    }
+    await refreshRagFileList(); // ← 画面右の文書一覧更新
+  });
+
+async function refreshRagFileList() {
+    const list = document.getElementById('rag-file-list');
+    list.innerHTML = '';
+    const sources = await window.ragAPI.getStoredSources();
+    for (const file of sources) {
+      const li = document.createElement('li');
+      li.textContent = file.split('/').pop();
+      list.appendChild(li);
+    }
+  }
