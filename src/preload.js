@@ -12,8 +12,14 @@ const { MemoryVectorStore } = require('langchain/vectorstores/memory');
 
 
 const embedder = new OllamaEmbeddings({
-  model: 'bge-m3', // ← または bge-m3, mxbai-embed-large など
+  model: 'bge-m3',
 });
+
+function setEmbedderModel(name) {
+  embedder = new OllamaEmbeddings({ model: name });
+  console.log('[RAG] embedding model switched to:', name);
+}
+
 
 let vectorStore = null;
 const VECTOR_DIR = path.join(__dirname, '../vector-db');
@@ -80,13 +86,13 @@ async function getStoredSources() {
   }
 
   const allDocs = await vectorStore.similaritySearch('', 9999);
-  console.log(allDocs.map(d => d.pageContent.slice(0, 100)));
+  // console.log(allDocs.map(d => d.pageContent.slice(0, 100)));
   const sources = new Set();
 
   for (const doc of allDocs) {
     if (doc.metadata?.source) {
       sources.add(doc.metadata.source);
-      console.log('[RAG] doc.metadata:', doc.metadata);
+      // console.log('[RAG] doc.metadata:', doc.metadata);
     }
   }
 
@@ -104,13 +110,6 @@ function saveSourceMeta(filePath) {
     fs.writeFileSync(LIST_PATH, JSON.stringify(list, null, 2), 'utf-8');
   }
 }
-
-/*
-function loadSourceMeta() {
-  if (!fs.existsSync(LIST_PATH)) return [];
-  return JSON.parse(fs.readFileSync(LIST_PATH, 'utf-8'));
-}
-*/
 
 async function extractTextFromPDF(filePath) {
     const data = new Uint8Array(fs.readFileSync(filePath));
@@ -157,21 +156,18 @@ async function readAndSplit(filePath) {
   });
 
   const chunks = await splitter.splitDocuments([rawDoc]);
-  console.log('[DEBUG] chunk metadata:', chunks[0]?.metadata);
+  // console.log('[DEBUG] chunk metadata:', chunks[0]?.metadata);
   return chunks;
 }
 
-contextBridge.exposeInMainWorld('ragAPI', {
+
+contextBridge.exposeInMainWorld('electronAPI', {
   readAndSplit,
   saveChunksToMemory,
   getStoredSources,
   saveSourceMeta,
   searchFromStore,
   loadVectorStore,
+  setEmbedderModel,
   openFileDialog: () => ipcRenderer.invoke('open-file-dialog'),
-});
-
-
-contextBridge.exposeInMainWorld('electronAPI', {
-  openRagWindow: () => ipcRenderer.invoke('open-rag-window'),
 });

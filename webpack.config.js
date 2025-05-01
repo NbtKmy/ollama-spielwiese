@@ -19,6 +19,21 @@ module.exports = {
       },
     ],
   },
+  resolve: {
+    fallback: {
+      fs: false,
+      path: false,
+      crypto: false,
+      stream: false,
+      url: false,
+      util: false,
+      zlib: false,
+      net: false,
+      http: false,
+      https: false,
+      querystring: false
+     },
+  },
   plugins: [
     new HtmlWebpackPlugin({
       template: './public/index.html',

@@ -8,12 +8,17 @@ async function loadModels() {
       const res = await fetch('http://localhost:3000/models');
       const data = await res.json();
       const select = document.getElementById('model-select');
+      const embedSelect = document.getElementById('embed-model');
+
   
       data.models.forEach(model => {
         const option = document.createElement('option');
         option.value = model;
         option.textContent = model;
+
         select.appendChild(option);
+        embedSelect.appendChild(option.cloneNode(true));
+        
       });
     } catch (err) {
       console.error('Error retrieving model list:', err);
@@ -21,7 +26,7 @@ async function loadModels() {
   }
   
   window.addEventListener('DOMContentLoaded', async () => {
-    await window.ragAPI.loadVectorStore();
+    await window.electronAPI.loadVectorStore();
     loadModels();
   
     document.getElementById('send').addEventListener('click', async () => {
@@ -43,16 +48,19 @@ async function loadModels() {
         isChatActive = true;
         lockParamsUI(true);
       }
-
+      let citations = '';
       appendMessage('user', prompt);
       if (useRag) {
-        const results = await window.ragAPI.searchFromStore(prompt);
-        console.log('[RAG] 検索結果:', results);
+        const results = await window.electronAPI.searchFromStore(prompt);
+        // console.log('[RAG] 検索結果:', results);
         if (results.length === 0) {
             alert('Reference information not found. Send as normal chat.');
             messages.push({ role: 'user', content: prompt });
           } else {
             const context = results.map(doc => doc.pageContent).join('\n---\n');
+            // Get source information from metadata
+            const sources = [...new Set(results.map(doc => doc.metadata?.source).filter(Boolean))];
+            citations = sources.map(src => `・${src.split('/').pop()}`).join('\n');
             messages.push({
                 role: 'user',
                 content: `Answer the question based on the following references:\n${context}\n\nQuestion: ${prompt}`
@@ -91,6 +99,11 @@ async function loadModels() {
         const chunk = decoder.decode(value);
         assistantReply += chunk;
         assistantEntry.textContent = assistantReply;
+      }
+      
+      if (citations) {
+        assistantReply += `\n\n📎 Source:\n${citations}`;
+        assistantEntry.textContent = assistantReply; 
       }
 
       messages.push({ role: 'assistant', content: assistantReply });
@@ -139,8 +152,6 @@ function createMessageEntry(role) {
     return content;
 }
 
-
-
 function resetChat() {
     messages = [];
     isChatActive = false;
@@ -175,25 +186,20 @@ function exportChat() {
 window.exportChat = exportChat;
 
 document.getElementById('use-rag').addEventListener('click', async () => {
-    const paths = await window.ragAPI.openFileDialog();
+    const paths = await window.electronAPI.openFileDialog();
     for (const filePath of paths) {
-      const chunks = await window.ragAPI.readAndSplit(filePath);
-      await window.ragAPI.saveChunksToMemory(chunks);
+      const chunks = await window.electronAPI.readAndSplit(filePath);
+      await window.electronAPI.saveChunksToMemory(chunks);
     }
     await refreshRagFileList();
   });
 
-/*
-document.getElementById('open-rag').addEventListener('click', () => {
-    window.electronAPI.openRagWindow();
-  });
-  */
 
 document.getElementById('rag-file-input').addEventListener('change', async (event) => {
     const files = Array.from(event.target.files);
     for (const file of files) {
-      const chunks = await window.ragAPI.readAndSplit(file.path);
-      await window.ragAPI.saveChunksToMemory(chunks);
+      const chunks = await window.electronAPI.readAndSplit(file.path);
+      await window.electronAPI.saveChunksToMemory(chunks);
     }
     await refreshRagFileList(); // ← 画面右の文書一覧更新
   });
@@ -201,10 +207,15 @@ document.getElementById('rag-file-input').addEventListener('change', async (even
 async function refreshRagFileList() {
     const list = document.getElementById('rag-file-list');
     list.innerHTML = '';
-    const sources = await window.ragAPI.getStoredSources();
+    const sources = await window.electronAPI.getStoredSources();
     for (const file of sources) {
       const li = document.createElement('li');
       li.textContent = file.split('/').pop();
       list.appendChild(li);
     }
   }
+
+document.getElementById('embed-model').addEventListener('change', (e) => {
+    const selected = e.target.value;
+    window.electronAPI.setEmbedderModel(selected);
+  });

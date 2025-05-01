@@ -2,7 +2,6 @@ const { app, BrowserWindow, ipcMain, dialog } = require('electron');
 const path = require('path');
 
 let mainWindow;
-let ragWindow;
 
 // ✨ サーバー起動をここで呼び出す
 require('./server'); 
@@ -22,38 +21,9 @@ function createMainWindow() {
   mainWindow.loadFile(path.join(__dirname, '../build/index.html'));
 }
 
-function createRagWindow() {
-    if (ragWindow) {
-      ragWindow.focus();
-      return;
-    }
-  
-    ragWindow = new BrowserWindow({
-      width: 800,
-      height: 600,
-      title: 'RAG Manager',
-      webPreferences: {
-        preload: path.join(__dirname, 'preload.js'),
-        contextIsolation: true,
-        nodeIntegration: false,
-        sandbox: false 
-      },
-    });
-  
-    ragWindow.loadFile('build/rag.html');
-  
-    ragWindow.on('closed', () => {
-      ragWindow = null;
-    });
-}
-  
 
 app.whenReady().then(() => {
     createMainWindow();
-  
-    ipcMain.handle('open-rag-window', () => {
-      createRagWindow();
-    });
   });
 
 app.on('window-all-closed', () => {
