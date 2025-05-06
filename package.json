@@ -8,23 +8,41 @@
     "build": "webpack",
     "start": "npm run build && electron .",
     "pack": "electron-builder --dir",
-    "dist": "electron-builder"
+    "dist": "npm run build && electron-builder"
   },
   "build": {
-    "appId": "com.example.ollama-spielwiese",
+    "appId": "com.nobu.ollama-spielwiese",
     "productName": "Ollama Spielwiese",
     "directories": {
       "output": "dist"
     },
     "files": [
       "build/**/*",
-      "src/main.js"
+      "src/**/*",
+      "vector-db/**/*"
+    ],
+    "extraResources": [
+      {
+        "from": "vector-db",
+        "to": "vector-db",
+        "filter": [
+          "**/*"
+        ]
+      }
     ],
     "mac": {
-      "target": "dmg"
+      "target": "dmg",
+      "category": "public.app-category.productivity",
+      "hardenedRuntime": true,
+      "entitlements": "entitlements.mac.plist",
+      "entitlementsInherit": "entitlements.mac.plist",
+      "gatekeeperAssess": false,
+      "icon": "./icons/icon.icns"
     },
+    "afterSign": "./script/notarize.js",
     "win": {
-      "target": "nsis"
+      "target": "nsis",
+      "icon": "./icons/icon.ico"
     }
   },
   "repository": {
@@ -32,8 +50,8 @@
     "url": "git+https://github.com/NbtKmy/ollama-spielwiese.git"
   },
   "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "author": "NbtKmy",
+  "license": "MIT",
   "bugs": {
     "url": "https://github.com/NbtKmy/ollama-spielwiese/issues"
   },
@@ -44,6 +62,7 @@
     "css-loader": "^7.1.2",
     "electron": "^35.2.1",
     "electron-builder": "^26.0.12",
+    "electron-notarize": "^1.2.2",
     "html-webpack-plugin": "^5.6.3",
     "postcss": "^8.5.3",
     "postcss-loader": "^8.1.1",
@@ -55,6 +74,7 @@
   },
   "dependencies": {
     "@langchain/community": "^0.3.42",
+    "@langchain/core": "^0.3.51",
     "@langchain/ollama": "^0.2.0",
     "axios": "^1.8.4",
     "body-parser": "^2.2.0",
