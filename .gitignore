@@ -217,3 +217,7 @@ ts-gen
 patches/mtime-cache.json
 
 spec/fixtures/logo.png
+
+# Vector database files (user-generated data)
+vector-db/faiss_store/
+vector-db/sources.json

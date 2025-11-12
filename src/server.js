@@ -4,7 +4,8 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 
 const app = express();
-const PORT = 3000;
+let PORT = 3000;
+let serverPort = null; // 実際に使用されているポート
 
 app.use(cors());
 app.use(bodyParser.json());
@@ -56,8 +57,7 @@ app.post('/chat-stream', (req, res) => {
     }
   );
 
-  ollamaReq.on('error', err => {
-    console.error('Stream error:', err.message);
+  ollamaReq.on('error', () => {
     res.status(500).end('Ollama stream error');
   });
 
@@ -85,11 +85,38 @@ app.get('/models', async (req, res) => {
     const models = response.data.models.map(m => m.name);
     res.json({ models });
   } catch (err) {
-    console.error('Error retrieving model list:', err.message);
-    res.status(500).json({ error: 'Model list cannot be retrieved from Ollama' });
+    res.status(500).json({ error: 'Ollama API not responding. Please make sure Ollama is running.' });
   }
 });
 
-app.listen(PORT, () => {
-  console.log(`✅ Express API running at http://localhost:${PORT}`);
-});
+// ポートを自動的に選択してサーバーを起動
+function startServer(port, maxRetries = 10) {
+  const server = app.listen(port, () => {
+    serverPort = port;
+  });
+
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE' && maxRetries > 0) {
+      startServer(port + 1, maxRetries - 1);
+    } else {
+      // Electronのメインプロセスにエラーを通知
+      if (global.mainWindow) {
+        global.mainWindow.webContents.send('server-error', {
+          message: 'Failed to start internal server',
+          error: err.message
+        });
+      }
+    }
+  });
+
+  return server;
+}
+
+startServer(PORT);
+
+// 使用中のポートを取得する関数をエクスポート
+module.exports = {
+  getPort: () => {
+    return serverPort;
+  }
+};

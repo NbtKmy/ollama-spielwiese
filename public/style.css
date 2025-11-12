@@ -23,7 +23,6 @@ body {
   
   .right {
     width: 30%;
-    background-color: #f9f9f9;
   }
   
   #chat-log {
@@ -67,5 +66,58 @@ body {
     align-self: flex-start;
     max-width: 80%;
     color: black;
+  }
+
+  /* RAG file list item styles */
+  .rag-file-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0.5rem;
+    border-radius: 4px;
+    transition: background-color 0.2s ease;
+  }
+
+  .rag-file-item:hover {
+    background-color: rgba(255, 255, 255, 0.1);
+  }
+
+  .rag-file-item .file-info {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .rag-file-item .file-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .rag-file-item .delete-btn {
+    opacity: 0;
+    background: none;
+    border: none;
+    font-size: 1.2rem;
+    cursor: pointer;
+    padding: 0.25rem;
+    margin-left: 0.5rem;
+    transition: opacity 0.2s ease, transform 0.1s ease;
+    color: #ef4444;
+    flex-shrink: 0;
+  }
+
+  .rag-file-item:hover .delete-btn {
+    opacity: 1;
+  }
+
+  .rag-file-item .delete-btn:hover {
+    transform: scale(1.2);
+  }
+
+  .rag-file-item .delete-btn:active {
+    transform: scale(0.9);
   }
   

@@ -1,6 +1,6 @@
 {
   "name": "ollama-spielwiese",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "",
   "main": "src/main.js",
   "scripts": {
@@ -13,13 +13,17 @@
   "build": {
     "appId": "com.nobu.ollama-spielwiese",
     "productName": "Ollama Spielwiese",
+    "afterSign": "script/notarize.js",
+    "asar": false,
     "directories": {
       "output": "dist"
     },
     "files": [
       "build/**/*",
       "src/**/*",
-      "vector-db/**/*"
+      "vector-db/**/*",
+      "node_modules/**/*",
+      "package.json"
     ],
     "extraResources": [
       {
@@ -39,11 +43,18 @@
       "gatekeeperAssess": false,
       "icon": "./icons/icon.icns"
     },
-    "afterSign": "./script/notarize.js",
     "win": {
       "target": "nsis",
       "icon": "./icons/icon.ico"
     }
+  },
+  "nsis": {
+    "oneClick": false,
+    "perMachine": false,
+    "allowToChangeInstallationDirectory": true,
+    "createDesktopShortcut": true,
+    "createStartMenuShortcut": true,
+    "shortcutName": "Ollama Spielwiese"
   },
   "repository": {
     "type": "git",
@@ -80,6 +91,7 @@
     "body-parser": "^2.2.0",
     "cors": "^2.8.5",
     "express": "^5.1.0",
+    "faiss-node": "^0.5.1",
     "gray-matter": "^4.0.3",
     "langchain": "^0.3.24",
     "pdfjs-dist": "2.14.305"

@@ -7,14 +7,14 @@
   </head>
   <body class="dark bg-gray-900 text-white flex h-screen">
 
-    <div class="left p-4 w-2/3 border-r border-gray-700 overflow-y-auto flex flex-col">
+    <div class="left p-4 w-1/2 border-r border-gray-700 bg-gray-900 overflow-y-auto flex flex-col">
       <div id="chat-log" class="flex flex-col gap-2 mb-4 overflow-y-auto flex-1"></div>
   
       <textarea id="prompt" class="bg-gray-800 p-2 rounded text-white" rows="4" placeholder="Write anything"></textarea>
       <button id="send" class="mt-2 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded">Submit</button>
     </div>
   
-    <div class="right p-4 w-1/3 bg-gray-800 dark:bg-gray-800 flex flex-col gap-2">
+    <div class="right p-4 w-1/4 bg-gray-800 flex flex-col gap-2 overflow-y-auto">
       <label for="model-select">Select a model:</label>
       <select id="model-select" class="bg-gray-700 text-white p-2 rounded"></select>
 
@@ -88,14 +88,14 @@
 
       <button class="mt-2 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded" onclick="resetChat()">New Chat</button>
       <button class="mt-2 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded" onclick="exportChat()">Export Chat</button>
-      <button id="use-rag" class="bg-blue-600 text-white px-4 py-2 rounded">Use RAG</button>
+      <button id="use-rag" class="bg-blue-600 text-white px-4 py-2 rounded">Load PDF for RAG</button>
         <input type="file" id="rag-file-input" class="hidden" multiple />
       <label class="flex items-center gap-2 mt-2">
         <input type="checkbox" id="use-rag-checkbox" class="accent-blue-600" />
         <span>Apply RAG</span>
       </label>
     </div>
-    <div class="p-4 w-1/4 bg-gray-900 text-white border-l border-gray-700">
+    <div class="p-4 w-1/4 bg-gray-900 text-white border-l border-gray-700 overflow-y-auto">
         <h3 class="text-sm font-bold mb-2">📂 RAG Texts</h3>
         <ul id="rag-file-list" class="space-y-1 text-sm"></ul>
     </div>

@@ -2,15 +2,32 @@ import '../public/style.css';
 
 let messages = [];
 let isChatActive = false;
+let serverPort = null; // サーバーポートをキャッシュ
+
+async function getServerPort() {
+  if (!serverPort) {
+    serverPort = await window.electronAPI.getServerPort();
+  }
+  return serverPort;
+}
 
 async function loadModels() {
     try {
-      const res = await fetch('http://localhost:3000/models');
+      const port = await getServerPort();
+      if (!port) {
+        throw new Error('Server port not available. Internal server may not have started.');
+      }
+      const res = await fetch(`http://localhost:${port}/models`);
+
+      if (!res.ok) {
+        throw new Error(`HTTP error! status: ${res.status}`);
+      }
+
       const data = await res.json();
       const select = document.getElementById('model-select');
       const embedSelect = document.getElementById('embed-model');
 
-  
+
       data.models.forEach(model => {
         const option = document.createElement('option');
         option.value = model;
@@ -18,16 +35,28 @@ async function loadModels() {
 
         select.appendChild(option);
         embedSelect.appendChild(option.cloneNode(true));
-        
+
       });
+
+      // Set current embedding model as default
+      const currentEmbedModel = window.electronAPI.getCurrentEmbedderModel();
+      embedSelect.value = currentEmbedModel;
     } catch (err) {
-      console.error('Error retrieving model list:', err);
+      alert(`⚠️ Ollama API Not Responding\n\nThe application could not connect to Ollama.\n\nPlease make sure:\n1. Ollama is running (http://localhost:11434)\n2. At least one model is installed\n\nError details: ${err.message}`);
     }
   }
   
   window.addEventListener('DOMContentLoaded', async () => {
-    await window.electronAPI.loadVectorStore();
     loadModels();
+
+    // ベクターストアがロードされるまで待ってから、保存済みのRAGファイルリストを読み込んで表示
+    await window.electronAPI.loadVectorStore();
+    await refreshRagFileList();
+
+    // サーバーエラー時の通知を受け取る
+    window.electronAPI.onServerError((data) => {
+      alert(`Server Error: ${data.message}\n\nDetails: ${data.error}\n\nThe application may not work correctly.`);
+    });
   
     document.getElementById('send').addEventListener('click', async () => {
       const prompt = document.getElementById('prompt').value;
@@ -52,15 +81,20 @@ async function loadModels() {
       appendMessage('user', prompt);
       if (useRag) {
         const results = await window.electronAPI.searchFromStore(prompt);
-        // console.log('[RAG] 検索結果:', results);
         if (results.length === 0) {
             alert('Reference information not found. Send as normal chat.');
             messages.push({ role: 'user', content: prompt });
           } else {
             const context = results.map(doc => doc.pageContent).join('\n---\n');
-            // Get source information from metadata
-            const sources = [...new Set(results.map(doc => doc.metadata?.source).filter(Boolean))];
-            citations = sources.map(src => `・${src.split('/').pop()}`).join('\n');
+            // Get source information with page numbers
+            const sourceInfo = results.map(doc => {
+              const fileName = doc.metadata?.source || 'Unknown';
+              const pageNum = doc.metadata?.page;
+              return pageNum ? `${fileName} (p.${pageNum})` : fileName;
+            });
+            // Remove duplicates while preserving order
+            const uniqueSources = [...new Set(sourceInfo)];
+            citations = uniqueSources.map(src => `・${src}`).join('\n');
             messages.push({
                 role: 'user',
                 content: `Answer the question based on the following references:\n${context}\n\nQuestion: ${prompt}`
@@ -74,8 +108,14 @@ async function loadModels() {
       }
       //messages.push({ role: 'user', content: prompt });
       document.getElementById('prompt').value = '';
-  
-      const res = await fetch('http://localhost:3000/chat-stream', {
+
+      const port = await getServerPort();
+      if (!port) {
+        alert('Internal server not available. Cannot send message.');
+        return;
+      }
+
+      const res = await fetch(`http://localhost:${port}/chat-stream`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -189,7 +229,7 @@ document.getElementById('use-rag').addEventListener('click', async () => {
     const paths = await window.electronAPI.openFileDialog();
     for (const filePath of paths) {
       const chunks = await window.electronAPI.readAndSplit(filePath);
-      await window.electronAPI.saveChunksToMemory(chunks);
+      await window.electronAPI.saveChunksToFaiss(chunks);
     }
     await refreshRagFileList();
   });
@@ -199,7 +239,7 @@ document.getElementById('rag-file-input').addEventListener('change', async (even
     const files = Array.from(event.target.files);
     for (const file of files) {
       const chunks = await window.electronAPI.readAndSplit(file.path);
-      await window.electronAPI.saveChunksToMemory(chunks);
+      await window.electronAPI.saveChunksToFaiss(chunks);
     }
     await refreshRagFileList(); // ← 画面右の文書一覧更新
   });
@@ -208,14 +248,75 @@ async function refreshRagFileList() {
     const list = document.getElementById('rag-file-list');
     list.innerHTML = '';
     const sources = await window.electronAPI.getStoredSources();
-    for (const file of sources) {
+    for (const item of sources) {
       const li = document.createElement('li');
-      li.textContent = file.split('/').pop();
+      li.className = 'rag-file-item';
+
+      const fileInfo = document.createElement('div');
+      fileInfo.className = 'file-info';
+
+      const fileName = document.createElement('span');
+      fileName.textContent = item.source.split('/').pop();
+      fileName.className = 'file-name';
+
+      const modelName = document.createElement('span');
+      modelName.textContent = `(${item.models.join(', ')})`;
+      modelName.className = 'model-name';
+      modelName.style.fontSize = '0.85em';
+      modelName.style.color = '#666';
+      modelName.style.marginLeft = '8px';
+
+      fileInfo.appendChild(fileName);
+      fileInfo.appendChild(modelName);
+
+      const deleteBtn = document.createElement('button');
+      deleteBtn.textContent = '🗑️';
+      deleteBtn.className = 'delete-btn';
+      deleteBtn.title = 'Delete this document';
+      deleteBtn.onclick = async (e) => {
+        e.stopPropagation();
+        if (confirm(`Are you sure you want to delete "${item.source.split('/').pop()}"?`)) {
+          try {
+            await window.electronAPI.deleteDocumentFromStore(item.source);
+            await refreshRagFileList();
+          } catch (error) {
+            alert(`Failed to delete document: ${error.message}`);
+          }
+        }
+      };
+
+      li.appendChild(fileInfo);
+      li.appendChild(deleteBtn);
       list.appendChild(li);
     }
   }
 
-document.getElementById('embed-model').addEventListener('change', (e) => {
+document.getElementById('embed-model').addEventListener('change', async (e) => {
     const selected = e.target.value;
-    window.electronAPI.setEmbedderModel(selected);
+    const result = await window.electronAPI.setEmbedderModel(selected);
+
+    if (!result.success) {
+      const existingModelsStr = result.existingModels.join(', ');
+      const confirmChange = confirm(
+        `⚠️ Embedding Model Compatibility Warning\n\n` +
+        `Existing documents use: ${existingModelsStr}\n` +
+        `You are switching to: ${result.newModel}\n\n` +
+        `Different embedding models create incompatible vector spaces.\n` +
+        `This means:\n` +
+        `• New documents will not be properly compared with existing ones\n` +
+        `• Search results may be inaccurate\n\n` +
+        `Recommendation: Delete all existing documents before switching,\n` +
+        `or continue using the same model.\n\n` +
+        `Do you want to switch anyway?`
+      );
+
+      if (!confirmChange) {
+        // モデル選択を元に戻す
+        e.target.value = result.existingModels[0];
+        return;
+      }
+
+      // 強制的に切り替え（forceフラグをtrue）
+      await window.electronAPI.setEmbedderModel(selected, true);
+    }
   });

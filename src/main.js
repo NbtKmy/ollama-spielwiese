@@ -3,10 +3,25 @@ const path = require('path');
 
 let mainWindow;
 
+// グローバルにmainWindowを設定（server.jsからアクセスできるように）
+global.mainWindow = null;
+
 // ✨ サーバー起動をここで呼び出す
-require('./server'); 
+let server = null;
+try {
+  server = require('./server');
+} catch (err) {
+  // Server loading failed
+}
 
 function createMainWindow() {
+  // ベクターDBのパスを環境に応じて設定
+  const vectorDbPath = app.isPackaged
+    ? path.join(process.resourcesPath, 'vector-db')
+    : path.join(app.getAppPath(), 'vector-db');
+
+  process.env.VECTOR_DB_PATH = vectorDbPath;
+
   mainWindow = new BrowserWindow({
     width: 1400,
     height: 800,
@@ -14,11 +29,19 @@ function createMainWindow() {
       preload: path.join(__dirname, 'preload.js'),
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: false 
+      sandbox: false
     },
   });
 
-  mainWindow.loadFile(path.join(__dirname, '../build/index.html'));
+  // グローバルに設定
+  global.mainWindow = mainWindow;
+
+  // パッケージ化されている場合とそうでない場合でパスを切り替え
+  const indexPath = app.isPackaged
+    ? path.join(__dirname, '../build/index.html')
+    : path.join(__dirname, '../build/index.html');
+
+  mainWindow.loadFile(indexPath);
 }
 
 
@@ -35,6 +58,14 @@ ipcMain.handle('open-file-dialog', async () => {
       properties: ['openFile', 'multiSelections'],
       filters: [{ name: 'Documents', extensions: ['txt', 'pdf', 'md'] }]
     });
-  
+
     return result.filePaths;
   });
+
+// サーバーポートを取得
+ipcMain.handle('get-server-port', () => {
+  if (!server || typeof server.getPort !== 'function') {
+    return null;
+  }
+  return server.getPort();
+});
