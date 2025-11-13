@@ -49,6 +49,32 @@ async function getExistingModels() {
   return Array.from(models);
 }
 
+async function checkEmbedModelExists() {
+  try {
+    const port = await ipcRenderer.invoke('get-server-port');
+    if (!port) {
+      return { exists: false, error: 'Server port not available' };
+    }
+
+    const response = await fetch(`http://localhost:${port}/models`);
+    if (!response.ok) {
+      return { exists: false, error: 'Failed to fetch models from Ollama' };
+    }
+
+    const data = await response.json();
+    const currentModel = embedder.model;
+    const modelExists = data.models.some(model => model === currentModel || model.startsWith(currentModel + ':'));
+
+    return {
+      exists: modelExists,
+      currentModel: currentModel,
+      availableModels: data.models
+    };
+  } catch (error) {
+    return { exists: false, error: error.message };
+  }
+}
+
 
 let vectorStore = null;
 
@@ -275,6 +301,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   setEmbedderModel,
   getCurrentEmbedderModel: () => embedder.model,
   deleteDocumentFromStore,
+  checkEmbedModelExists,
   openFileDialog: () => ipcRenderer.invoke('open-file-dialog'),
   getServerPort: () => ipcRenderer.invoke('get-server-port'),
   onServerError: (callback) => ipcRenderer.on('server-error', (_event, data) => callback(data)),

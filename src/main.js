@@ -42,6 +42,9 @@ function createMainWindow() {
     : path.join(__dirname, '../build/index.html');
 
   mainWindow.loadFile(indexPath);
+
+  // 開発時やデバッグ時にDevToolsを開く
+  // mainWindow.webContents.openDevTools();
 }
 
 

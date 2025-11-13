@@ -28,6 +28,9 @@ async function loadModels() {
       const embedSelect = document.getElementById('embed-model');
 
 
+      // Get current embedding model first
+      const currentEmbedModel = window.electronAPI.getCurrentEmbedderModel();
+
       data.models.forEach(model => {
         const option = document.createElement('option');
         option.value = model;
@@ -38,8 +41,15 @@ async function loadModels() {
 
       });
 
+      // If current embedding model is not in the list, add it
+      if (!data.models.includes(currentEmbedModel)) {
+        const option = document.createElement('option');
+        option.value = currentEmbedModel;
+        option.textContent = currentEmbedModel;
+        embedSelect.appendChild(option);
+      }
+
       // Set current embedding model as default
-      const currentEmbedModel = window.electronAPI.getCurrentEmbedderModel();
       embedSelect.value = currentEmbedModel;
     } catch (err) {
       alert(`⚠️ Ollama API Not Responding\n\nThe application could not connect to Ollama.\n\nPlease make sure:\n1. Ollama is running (http://localhost:11434)\n2. At least one model is installed\n\nError details: ${err.message}`);
@@ -49,15 +59,12 @@ async function loadModels() {
   window.addEventListener('DOMContentLoaded', async () => {
     loadModels();
 
-    // ベクターストアがロードされるまで待ってから、保存済みのRAGファイルリストを読み込んで表示
-    await window.electronAPI.loadVectorStore();
-    await refreshRagFileList();
-
     // サーバーエラー時の通知を受け取る
     window.electronAPI.onServerError((data) => {
       alert(`Server Error: ${data.message}\n\nDetails: ${data.error}\n\nThe application may not work correctly.`);
     });
-  
+
+    // イベントリスナーを先に登録（これが最も重要）
     document.getElementById('send').addEventListener('click', async () => {
       const prompt = document.getElementById('prompt').value;
       const systemPrompt = document.getElementById('system-prompt').value;
@@ -80,26 +87,40 @@ async function loadModels() {
       let citations = '';
       appendMessage('user', prompt);
       if (useRag) {
-        const results = await window.electronAPI.searchFromStore(prompt);
-        if (results.length === 0) {
-            alert('Reference information not found. Send as normal chat.');
-            messages.push({ role: 'user', content: prompt });
-          } else {
-            const context = results.map(doc => doc.pageContent).join('\n---\n');
-            // Get source information with page numbers
-            const sourceInfo = results.map(doc => {
-              const fileName = doc.metadata?.source || 'Unknown';
-              const pageNum = doc.metadata?.page;
-              return pageNum ? `${fileName} (p.${pageNum})` : fileName;
-            });
-            // Remove duplicates while preserving order
-            const uniqueSources = [...new Set(sourceInfo)];
-            citations = uniqueSources.map(src => `・${src}`).join('\n');
-            messages.push({
-                role: 'user',
-                content: `Answer the question based on the following references:\n${context}\n\nQuestion: ${prompt}`
+        // Check if embedding model exists in Ollama
+        const modelCheck = await window.electronAPI.checkEmbedModelExists();
+        if (!modelCheck.exists) {
+          alert(
+            `⚠️ Embedding Model Not Available\n\n` +
+            `RAG (Retrieval-Augmented Generation) requires an embedding model, but "${modelCheck.currentModel}" is not installed in Ollama.\n\n` +
+            `To use RAG, please install the embedding model:\n` +
+            `  ollama pull ${modelCheck.currentModel}\n\n` +
+            `Or select a different embedding model from the available models in the settings panel.\n\n` +
+            `Proceeding with normal chat without RAG.`
+          );
+          messages.push({ role: 'user', content: prompt });
+        } else {
+          const results = await window.electronAPI.searchFromStore(prompt);
+          if (results.length === 0) {
+              alert('Reference information not found. Send as normal chat.');
+              messages.push({ role: 'user', content: prompt });
+            } else {
+              const context = results.map(doc => doc.pageContent).join('\n---\n');
+              // Get source information with page numbers
+              const sourceInfo = results.map(doc => {
+                const fileName = doc.metadata?.source || 'Unknown';
+                const pageNum = doc.metadata?.page;
+                return pageNum ? `${fileName} (p.${pageNum})` : fileName;
               });
-          }
+              // Remove duplicates while preserving order
+              const uniqueSources = [...new Set(sourceInfo)];
+              citations = uniqueSources.map(src => `・${src}`).join('\n');
+              messages.push({
+                  role: 'user',
+                  content: `Answer the question based on the following references:\n${context}\n\nQuestion: ${prompt}`
+                });
+            }
+        }
       } else {
         messages.push({
           role: 'user',
@@ -148,6 +169,14 @@ async function loadModels() {
 
       messages.push({ role: 'assistant', content: assistantReply });
     });
+
+    // ベクターストアをバックグラウンドでロード（失敗してもUIには影響しない）
+    try {
+      await window.electronAPI.loadVectorStore();
+      await refreshRagFileList();
+    } catch (error) {
+      console.error('Failed to load vector store:', error);
+    }
   });
 
 function lockParamsUI(lock) {
@@ -226,6 +255,19 @@ function exportChat() {
 window.exportChat = exportChat;
 
 document.getElementById('use-rag').addEventListener('click', async () => {
+    // Check if embedding model exists in Ollama
+    const modelCheck = await window.electronAPI.checkEmbedModelExists();
+    if (!modelCheck.exists) {
+      alert(
+        `⚠️ Embedding Model Not Available\n\n` +
+        `Cannot upload documents for RAG. The embedding model "${modelCheck.currentModel}" is not installed in Ollama.\n\n` +
+        `To use RAG, please install the embedding model:\n` +
+        `  ollama pull ${modelCheck.currentModel}\n\n` +
+        `Or select a different embedding model from the available models in the settings panel.`
+      );
+      return;
+    }
+
     const paths = await window.electronAPI.openFileDialog();
     for (const filePath of paths) {
       const chunks = await window.electronAPI.readAndSplit(filePath);
@@ -236,6 +278,21 @@ document.getElementById('use-rag').addEventListener('click', async () => {
 
 
 document.getElementById('rag-file-input').addEventListener('change', async (event) => {
+    // Check if embedding model exists in Ollama
+    const modelCheck = await window.electronAPI.checkEmbedModelExists();
+    if (!modelCheck.exists) {
+      alert(
+        `⚠️ Embedding Model Not Available\n\n` +
+        `Cannot upload documents for RAG. The embedding model "${modelCheck.currentModel}" is not installed in Ollama.\n\n` +
+        `To use RAG, please install the embedding model:\n` +
+        `  ollama pull ${modelCheck.currentModel}\n\n` +
+        `Or select a different embedding model from the available models in the settings panel.`
+      );
+      // Reset the file input
+      event.target.value = '';
+      return;
+    }
+
     const files = Array.from(event.target.files);
     for (const file of files) {
       const chunks = await window.electronAPI.readAndSplit(file.path);
