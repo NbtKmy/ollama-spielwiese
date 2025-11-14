@@ -43,6 +43,10 @@
       "gatekeeperAssess": false,
       "icon": "./icons/icon.icns"
     },
+    "dmg": {
+      "format": "UDZO",
+      "writeUpdateInfo": false
+    },
     "win": {
       "target": "nsis",
       "icon": "./icons/icon.ico"

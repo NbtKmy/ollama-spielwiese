@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, dialog } = require('electron');
+const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron');
 const path = require('path');
 
 let mainWindow;
@@ -43,12 +43,132 @@ function createMainWindow() {
 
   mainWindow.loadFile(indexPath);
 
-  // 開発時やデバッグ時にDevToolsを開く
+  // DevToolsは自動では開かない（メニューやショートカットから開けるようにする）
   // mainWindow.webContents.openDevTools();
+}
+
+function createMenu() {
+  const isMac = process.platform === 'darwin';
+
+  const template = [
+    // Macの場合のみアプリケーションメニュー
+    ...(isMac ? [{
+      label: app.name,
+      submenu: [
+        { role: 'about' },
+        { type: 'separator' },
+        { role: 'services' },
+        { type: 'separator' },
+        { role: 'hide' },
+        { role: 'hideOthers' },
+        { role: 'unhide' },
+        { type: 'separator' },
+        { role: 'quit' }
+      ]
+    }] : []),
+
+    // File メニュー
+    {
+      label: 'File',
+      submenu: [
+        isMac ? { role: 'close' } : { role: 'quit' }
+      ]
+    },
+
+    // Edit メニュー（コピー・ペーストなど）
+    {
+      label: 'Edit',
+      submenu: [
+        { role: 'undo' },
+        { role: 'redo' },
+        { type: 'separator' },
+        { role: 'cut' },
+        { role: 'copy' },
+        { role: 'paste' },
+        ...(isMac ? [
+          { role: 'pasteAndMatchStyle' },
+          { role: 'delete' },
+          { role: 'selectAll' },
+          { type: 'separator' },
+          {
+            label: 'Speech',
+            submenu: [
+              { role: 'startSpeaking' },
+              { role: 'stopSpeaking' }
+            ]
+          }
+        ] : [
+          { role: 'delete' },
+          { type: 'separator' },
+          { role: 'selectAll' }
+        ])
+      ]
+    },
+
+    // View メニュー（DevTools含む）
+    {
+      label: 'View',
+      submenu: [
+        {
+          label: 'Toggle Developer Tools',
+          accelerator: isMac ? 'Cmd+Shift+I' : 'Ctrl+Shift+I',
+          click: (item, focusedWindow) => {
+            if (focusedWindow) {
+              focusedWindow.webContents.toggleDevTools();
+            }
+          }
+        },
+        { type: 'separator' },
+        { role: 'reload' },
+        { role: 'forceReload' },
+        { type: 'separator' },
+        { role: 'resetZoom' },
+        { role: 'zoomIn' },
+        { role: 'zoomOut' },
+        { type: 'separator' },
+        { role: 'togglefullscreen' }
+      ]
+    },
+
+    // Window メニュー
+    {
+      label: 'Window',
+      submenu: [
+        { role: 'minimize' },
+        { role: 'zoom' },
+        ...(isMac ? [
+          { type: 'separator' },
+          { role: 'front' },
+          { type: 'separator' },
+          { role: 'window' }
+        ] : [
+          { role: 'close' }
+        ])
+      ]
+    },
+
+    // Help メニュー
+    {
+      role: 'help',
+      submenu: [
+        {
+          label: 'Learn More',
+          click: async () => {
+            const { shell } = require('electron');
+            await shell.openExternal('https://github.com/NbtKmy/ollama-spielwiese');
+          }
+        }
+      ]
+    }
+  ];
+
+  const menu = Menu.buildFromTemplate(template);
+  Menu.setApplicationMenu(menu);
 }
 
 
 app.whenReady().then(() => {
+    createMenu();
     createMainWindow();
   });
 

@@ -14,6 +14,9 @@ let embedder = new OllamaEmbeddings({
   model: 'bge-m3',
 });
 
+// メインプロセスから渡された環境変数を使用
+const VECTOR_DIR = process.env.VECTOR_DB_PATH || path.join(__dirname, '../vector-db');
+
 async function setEmbedderModel(name, force = false) {
   // forceフラグがfalseの場合のみ警告チェック
   if (!force) {
@@ -29,6 +32,22 @@ async function setEmbedderModel(name, force = false) {
   }
 
   embedder = new OllamaEmbeddings({ model: name });
+
+  // embedモデルが変更されたら、vectorStoreをリセット
+  // 既存のベクトルストアは異なる次元数の可能性があるため、物理的なファイルも削除
+  vectorStore = null;
+
+  // 物理的なベクトルストアファイルも削除
+  const storePath = path.join(VECTOR_DIR, 'faiss_store');
+  try {
+    if (fs.existsSync(storePath)) {
+      fs.rmSync(storePath, { recursive: true, force: true });
+      console.log('[INFO] Deleted existing vector store due to embedding model change');
+    }
+  } catch (error) {
+    console.error('[ERROR] Failed to delete vector store:', error);
+  }
+
   return { success: true };
 }
 
@@ -37,33 +56,59 @@ async function getExistingModels() {
     return [];
   }
 
-  const allDocs = await vectorStore.similaritySearch('', 9999);
-  const models = new Set();
+  try {
+    const allDocs = await vectorStore.similaritySearch('', 9999);
+    const models = new Set();
 
-  for (const doc of allDocs) {
-    if (doc.metadata?.embeddingModel) {
-      models.add(doc.metadata.embeddingModel);
+    for (const doc of allDocs) {
+      if (doc.metadata?.embeddingModel) {
+        models.add(doc.metadata.embeddingModel);
+      }
     }
-  }
 
-  return Array.from(models);
+    return Array.from(models);
+  } catch (error) {
+    // 次元数ミスマッチエラーの場合は、ストアをクリア
+    if (error.message && error.message.includes('dimensions')) {
+      console.error('[ERROR] Vector store dimension mismatch in getExistingModels:', error.message);
+      const storePath = path.join(VECTOR_DIR, 'faiss_store');
+      try {
+        fs.rmSync(storePath, { recursive: true, force: true });
+        vectorStore = null;
+      } catch (deleteError) {
+        console.error('[ERROR] Failed to delete incompatible vector store:', deleteError);
+      }
+    }
+    return [];
+  }
 }
 
 async function checkEmbedModelExists() {
   try {
+    console.log('[DEBUG] checkEmbedModelExists: Getting server port...');
     const port = await ipcRenderer.invoke('get-server-port');
+    console.log('[DEBUG] checkEmbedModelExists: Server port:', port);
+
     if (!port) {
       return { exists: false, error: 'Server port not available' };
     }
 
+    console.log('[DEBUG] checkEmbedModelExists: Fetching models from localhost:' + port);
     const response = await fetch(`http://localhost:${port}/models`);
+    console.log('[DEBUG] checkEmbedModelExists: Response status:', response.status);
+
     if (!response.ok) {
       return { exists: false, error: 'Failed to fetch models from Ollama' };
     }
 
     const data = await response.json();
+    console.log('[DEBUG] checkEmbedModelExists: Available models:', data.models);
+
     const currentModel = embedder.model;
+    console.log('[DEBUG] checkEmbedModelExists: Current embedder model:', currentModel);
+
     const modelExists = data.models.some(model => model === currentModel || model.startsWith(currentModel + ':'));
+    console.log('[DEBUG] checkEmbedModelExists: Model exists:', modelExists);
 
     return {
       exists: modelExists,
@@ -71,6 +116,7 @@ async function checkEmbedModelExists() {
       availableModels: data.models
     };
   } catch (error) {
+    console.error('[ERROR] checkEmbedModelExists: Exception:', error);
     return { exists: false, error: error.message };
   }
 }
@@ -78,8 +124,6 @@ async function checkEmbedModelExists() {
 
 let vectorStore = null;
 
-// メインプロセスから渡された環境変数を使用
-const VECTOR_DIR = process.env.VECTOR_DB_PATH || path.join(__dirname, '../vector-db');
 const LIST_PATH = path.join(VECTOR_DIR, 'sources.json');
 
 // vector-dbディレクトリが存在しない場合は作成
@@ -90,20 +134,66 @@ if (!fs.existsSync(VECTOR_DIR)) {
 async function saveChunksToFaiss(chunks) {
   const storePath = path.join(VECTOR_DIR, 'faiss_store');
 
-  if (!vectorStore) {
-    // 既存のストアがあればロード、なければ新規作成
-    if (fs.existsSync(storePath)) {
-      vectorStore = await FaissStore.load(storePath, embedder);
-      await vectorStore.addDocuments(chunks);
+  try {
+    if (!vectorStore) {
+      // 既存のストアがあればロード、なければ新規作成
+      if (fs.existsSync(storePath)) {
+        vectorStore = await FaissStore.load(storePath, embedder);
+        await vectorStore.addDocuments(chunks);
+      } else {
+        vectorStore = await FaissStore.fromDocuments(chunks, embedder);
+      }
     } else {
-      vectorStore = await FaissStore.fromDocuments(chunks, embedder);
+      await vectorStore.addDocuments(chunks);
     }
-  } else {
-    await vectorStore.addDocuments(chunks);
-  }
 
-  // ディスクに保存
-  await vectorStore.save(storePath);
+    // ディスクに保存
+    await vectorStore.save(storePath);
+  } catch (error) {
+    console.error('[ERROR] Failed to save chunks to vector store:', error);
+
+    // エンベディング失敗の場合、不完全なベクトルストアをクリーンアップ
+    if (error.message && (
+      error.message.includes('Internal Server Error') ||
+      error.message.includes('embedding') ||
+      error.message.includes('dimensions') ||
+      error.message.includes('500')
+    )) {
+      console.warn('[CLEANUP] Removing potentially corrupted vector store due to embedding failure');
+
+      // vectorStoreをリセット
+      vectorStore = null;
+
+      // ディスク上のストアを削除
+      try {
+        if (fs.existsSync(storePath)) {
+          fs.rmSync(storePath, { recursive: true, force: true });
+          console.log('[CLEANUP] Successfully removed corrupted vector store');
+        }
+      } catch (cleanupError) {
+        console.error('[CLEANUP] Failed to remove corrupted vector store:', cleanupError);
+      }
+
+      // より詳細なエラーメッセージでre-throw
+      const errorMessage = error.message || 'Unknown error';
+      if (errorMessage.includes('Internal Server Error') || errorMessage.includes('500')) {
+        throw new Error(
+          `Embedding model failed with Ollama Internal Server Error.\n` +
+          `The model "${embedder.model}" may not be suitable for embeddings or may not be properly installed.\n\n` +
+          `Original error: ${errorMessage}\n\n` +
+          `The vector store has been cleaned up. Please try again with a different embedding model.`
+        );
+      } else {
+        throw new Error(
+          `Failed to create embeddings: ${errorMessage}\n\n` +
+          `The vector store has been cleaned up. Please try again.`
+        );
+      }
+    }
+
+    // その他のエラーはそのまま再スロー
+    throw error;
+  }
 }
 
 /*
@@ -125,19 +215,58 @@ async function loadVectorStore() {
 
   const storePath = path.join(VECTOR_DIR, 'faiss_store');
 
-  // 既存のストアがあればロード
+  // 既存のストアがあればロードする
+  // ストアが存在しない場合はvectorStoreをnullのままにする
+  // （最初のドキュメントが追加されたときにsaveChunksToFaissで初期化される）
   if (fs.existsSync(storePath)) {
-    vectorStore = await FaissStore.load(storePath, embedder);
-  } else {
-    // なければ空のストアを作成
-    vectorStore = await FaissStore.fromDocuments([], embedder);
+    try {
+      vectorStore = await FaissStore.load(storePath, embedder);
+    } catch (error) {
+      // 次元数ミスマッチなどのエラーが発生した場合
+      if (error.message && error.message.includes('dimensions')) {
+        console.error('[ERROR] Vector store dimension mismatch. Clearing incompatible store:', error.message);
+        // 互換性のないベクトルストアを削除
+        try {
+          fs.rmSync(storePath, { recursive: true, force: true });
+        } catch (deleteError) {
+          console.error('[ERROR] Failed to delete incompatible vector store:', deleteError);
+        }
+        vectorStore = null;
+      } else {
+        // その他のエラーは再スロー
+        throw error;
+      }
+    }
   }
 }
 
 
 async function searchFromStore(query, k = 3) {
   if (!vectorStore) throw new Error('No vector store loaded');
-  return await vectorStore.similaritySearch(query, k);
+
+  try {
+    return await vectorStore.similaritySearch(query, k);
+  } catch (error) {
+    // 次元数ミスマッチエラーの場合は、より詳細なエラーメッセージを提供
+    if (error.message && error.message.includes('dimensions')) {
+      const storePath = path.join(VECTOR_DIR, 'faiss_store');
+      // 互換性のないベクトルストアを削除
+      try {
+        fs.rmSync(storePath, { recursive: true, force: true });
+        vectorStore = null;
+      } catch (deleteError) {
+        console.error('[ERROR] Failed to delete incompatible vector store:', deleteError);
+      }
+
+      throw new Error(
+        `Vector dimension mismatch detected. The existing vector store was created with a different embedding model ` +
+        `and is incompatible with the current model (${embedder.model}). ` +
+        `The incompatible store has been cleared. Please re-upload your documents.`
+      );
+    }
+    // その他のエラーはそのまま再スロー
+    throw error;
+  }
 }
 
 /*
@@ -186,6 +315,17 @@ async function getStoredSources() {
       models: Array.from(info.models)
     }));
   } catch (error) {
+    // 次元数ミスマッチエラーの場合は、ストアをクリア
+    if (error.message && error.message.includes('dimensions')) {
+      console.error('[ERROR] Vector store dimension mismatch in getStoredSources:', error.message);
+      const storePath = path.join(VECTOR_DIR, 'faiss_store');
+      try {
+        fs.rmSync(storePath, { recursive: true, force: true });
+        vectorStore = null;
+      } catch (deleteError) {
+        console.error('[ERROR] Failed to delete incompatible vector store:', deleteError);
+      }
+    }
     return [];
   }
 }
@@ -291,6 +431,9 @@ async function readAndSplit(filePath) {
 }
 
 
+console.log('[DEBUG] Preload script loaded');
+console.log('[DEBUG] electronAPI available:', typeof window !== 'undefined');
+
 contextBridge.exposeInMainWorld('electronAPI', {
   readAndSplit,
   saveChunksToFaiss,
@@ -302,10 +445,15 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getCurrentEmbedderModel: () => embedder.model,
   deleteDocumentFromStore,
   checkEmbedModelExists,
-  openFileDialog: () => ipcRenderer.invoke('open-file-dialog'),
+  openFileDialog: () => {
+    console.log('[DEBUG] openFileDialog called in preload');
+    return ipcRenderer.invoke('open-file-dialog');
+  },
   getServerPort: () => ipcRenderer.invoke('get-server-port'),
   onServerError: (callback) => ipcRenderer.on('server-error', (_event, data) => callback(data)),
 });
+
+console.log('[DEBUG] electronAPI.openFileDialog:', typeof window.electronAPI?.openFileDialog);
 
 // Preload時にベクターストアをバックグラウンドでロード
 loadVectorStore().catch(() => {

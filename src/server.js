@@ -89,6 +89,17 @@ app.get('/models', async (req, res) => {
   }
 });
 
+// Get all models (no filtering)
+app.get('/embedding-models', async (req, res) => {
+  try {
+    const response = await axios.get('http://localhost:11434/api/tags');
+    const models = response.data.models.map(m => m.name);
+    res.json({ models });
+  } catch (err) {
+    res.status(500).json({ error: 'Ollama API not responding. Please make sure Ollama is running.' });
+  }
+});
+
 // ポートを自動的に選択してサーバーを起動
 function startServer(port, maxRetries = 10) {
   const server = app.listen(port, () => {
