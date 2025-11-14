@@ -157,38 +157,69 @@ async function loadModels() {
         return;
       }
 
-      const res = await fetch(`http://localhost:${port}/chat-stream`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model,
-          messages,
-          temperature,
-          top_p,
-          top_k,
-          seed
-        }),
-      });
-  
-      const reader = res.body.getReader();
-      const decoder = new TextDecoder();
-      let assistantReply = '';
-      const assistantEntry = createMessageEntry('assistant');
-  
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        const chunk = decoder.decode(value);
-        assistantReply += chunk;
-        assistantEntry.textContent = assistantReply;
-      }
-      
-      if (citations) {
-        assistantReply += `\n\n📎 Source:\n${citations}`;
-        assistantEntry.textContent = assistantReply; 
-      }
+      try {
+        const res = await fetch(`http://localhost:${port}/chat-stream`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            model,
+            messages,
+            temperature,
+            top_p,
+            top_k,
+            seed
+          }),
+        });
 
-      messages.push({ role: 'assistant', content: assistantReply });
+        // Check if the response is ok
+        if (!res.ok) {
+          const errorText = await res.text();
+          throw new Error(`Ollama API Error (${res.status}): ${errorText}`);
+        }
+
+        const reader = res.body.getReader();
+        const decoder = new TextDecoder();
+        let assistantReply = '';
+        const assistantEntry = createMessageEntry('assistant');
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          const chunk = decoder.decode(value);
+          assistantReply += chunk;
+          assistantEntry.textContent = assistantReply;
+        }
+
+        if (citations) {
+          assistantReply += `\n\n📎 Source:\n${citations}`;
+          assistantEntry.textContent = assistantReply;
+        }
+
+        messages.push({ role: 'assistant', content: assistantReply });
+      } catch (error) {
+        console.error('[ERROR] Chat stream failed:', error);
+
+        // Display error message to user
+        const errorMessage = error.message || 'Unknown error';
+        alert(
+          `⚠️ Chat Request Failed\n\n` +
+          `Error: ${errorMessage}\n\n` +
+          `Common causes:\n` +
+          `• Insufficient RAM for the selected model\n` +
+          `• Ollama service is not responding\n` +
+          `• The model is not properly loaded\n` +
+          `• Network connection issue\n\n` +
+          `Try:\n` +
+          `• Using a smaller model\n` +
+          `• Restarting Ollama\n` +
+          `• Checking Ollama status at http://localhost:11434`
+        );
+
+        // Remove the last user message since the request failed
+        if (messages.length > 0 && messages[messages.length - 1].role === 'user') {
+          messages.pop();
+        }
+      }
     });
 
     // ベクターストアをバックグラウンドでロード（失敗してもUIには影響しない）
