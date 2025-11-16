@@ -373,7 +373,11 @@ function saveSourceMeta(filePath) {
 
 async function extractTextFromPDF(filePath) {
     const data = new Uint8Array(fs.readFileSync(filePath));
-    const pdf = await pdfjsLib.getDocument({ data }).promise;
+    // isEvalSupported: false を設定して GHSA-wgrm-67xf-hhpq 脆弱性を軽減
+    const pdf = await pdfjsLib.getDocument({
+      data,
+      isEvalSupported: false
+    }).promise;
 
     const pages = [];
     for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
