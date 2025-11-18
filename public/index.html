@@ -90,10 +90,30 @@
       <button class="mt-2 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded" onclick="exportChat()">Export Chat</button>
       <button id="use-rag" class="bg-blue-600 text-white px-4 py-2 rounded">Load PDF for RAG</button>
         <input type="file" id="rag-file-input" class="hidden" multiple />
+      <div id="pdf-loading" class="hidden mt-2 flex items-center gap-2 text-sm text-blue-400">
+        <div class="spinner"></div>
+        <span>Processing PDF...</span>
+      </div>
       <label class="flex items-center gap-2 mt-2">
         <input type="checkbox" id="use-rag-checkbox" class="accent-blue-600" />
         <span>Apply RAG</span>
       </label>
+
+      <div id="rag-mode-selector" class="mt-2 ml-6 space-y-1">
+        <label class="text-xs font-bold">RAG Mode:</label>
+        <label class="flex items-center gap-2 text-sm">
+          <input type="radio" name="rag-mode" value="embedding" checked class="accent-blue-600" />
+          <span>Embedding (Vector)</span>
+        </label>
+        <label class="flex items-center gap-2 text-sm">
+          <input type="radio" name="rag-mode" value="fulltext" class="accent-blue-600" />
+          <span>Full-text (Keyword)</span>
+        </label>
+        <label class="flex items-center gap-2 text-sm">
+          <input type="radio" name="rag-mode" value="hybrid" class="accent-blue-600" />
+          <span>Hybrid (Both)</span>
+        </label>
+      </div>
     </div>
     <div class="p-4 w-1/4 bg-gray-900 text-white border-l border-gray-700 overflow-y-auto">
         <h3 class="text-sm font-bold mb-2">📂 RAG Texts</h3>

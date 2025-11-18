@@ -1,4 +1,13 @@
 import '../public/style.css';
+import { marked } from 'marked';
+
+// Configure marked for safe rendering
+marked.setOptions({
+  breaks: true,
+  gfm: true,
+  headerIds: false,
+  mangle: false
+});
 
 let messages = [];
 let isChatActive = false;
@@ -108,9 +117,29 @@ async function loadModels() {
       }
       let citations = '';
       appendMessage('user', prompt);
+
+      // Show typing indicator immediately (before RAG search)
+      const assistantEntry = createMessageEntry('assistant');
+      assistantEntry.innerHTML = '<div style="display: flex; align-items: center; gap: 8px;"><div class="typing-indicator"><span></span><span></span><span></span></div><span style="color: #374151; font-weight: 500;">Thinking...</span></div>';
+      let isFirstChunk = true;
+
       if (useRag) {
         try {
-          const results = await window.electronAPI.searchFromStore(prompt);
+          // Get selected RAG mode
+          const ragMode = document.querySelector('input[name="rag-mode"]:checked').value;
+          let results;
+
+          // Call appropriate search function based on RAG mode
+          if (ragMode === 'embedding') {
+            results = await window.electronAPI.searchFromStoreEmbedding(prompt);
+          } else if (ragMode === 'fulltext') {
+            // Pass chat model and history for context-aware query rewriting
+            results = await window.electronAPI.searchFromStoreFullText(prompt, 3, model, messages);
+          } else if (ragMode === 'hybrid') {
+            // Pass chat model and history for context-aware hybrid search
+            results = await window.electronAPI.searchFromStoreHybrid(prompt, 3, model, messages);
+          }
+
           if (results.length === 0) {
             alert('Reference information not found. Send as normal chat.');
             messages.push({ role: 'user', content: prompt });
@@ -118,7 +147,9 @@ async function loadModels() {
             const context = results.map(doc => doc.pageContent).join('\n---\n');
             // Get source information with page numbers
             const sourceInfo = results.map(doc => {
-              const fileName = doc.metadata?.source || 'Unknown';
+              const fullPath = doc.metadata?.source || 'Unknown';
+              // Extract only the filename from the full path
+              const fileName = fullPath.split('/').pop();
               const pageNum = doc.metadata?.page;
               return pageNum ? `${fileName} (p.${pageNum})` : fileName;
             });
@@ -180,24 +211,35 @@ async function loadModels() {
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
         let assistantReply = '';
-        const assistantEntry = createMessageEntry('assistant');
 
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
           const chunk = decoder.decode(value);
+
+          // Remove typing indicator on first chunk
+          if (isFirstChunk) {
+            assistantEntry.innerHTML = '';
+            isFirstChunk = false;
+          }
+
           assistantReply += chunk;
-          assistantEntry.textContent = assistantReply;
+          // Render markdown to HTML
+          assistantEntry.innerHTML = marked.parse(assistantReply);
         }
 
         if (citations) {
           assistantReply += `\n\n📎 Source:\n${citations}`;
-          assistantEntry.textContent = assistantReply;
+          // Render markdown to HTML
+          assistantEntry.innerHTML = marked.parse(assistantReply);
         }
 
         messages.push({ role: 'assistant', content: assistantReply });
       } catch (error) {
         console.error('[ERROR] Chat stream failed:', error);
+
+        // Remove typing indicator and show error
+        assistantEntry.innerHTML = '<span style="color: #ef4444;">Error: Failed to get response</span>';
 
         // Display error message to user
         const errorMessage = error.message || 'Unknown error';
@@ -233,7 +275,10 @@ async function loadModels() {
     // Load PDF for RAG button
     document.getElementById('use-rag').addEventListener('click', async () => {
       console.log('[DEBUG] Load PDF button clicked');
+      const loadingIndicator = document.getElementById('pdf-loading');
       try {
+        // Show loading indicator
+        loadingIndicator.classList.remove('hidden');
         // 現在選択されているembedding modelを取得
         const selectedEmbedModel = document.getElementById('embed-model').value;
         console.log('[DEBUG] Selected embed model:', selectedEmbedModel);
@@ -315,13 +360,23 @@ async function loadModels() {
           return; // ファイルが選択されなかった場合は処理を中止
         }
 
-        for (const filePath of paths) {
+        console.log('[DEBUG] Number of files selected:', paths.length);
+        for (let i = 0; i < paths.length; i++) {
+          const filePath = paths[i];
+          console.log(`[DEBUG] Processing file ${i + 1}/${paths.length}:`, filePath);
           const chunks = await window.electronAPI.readAndSplit(filePath);
+          console.log(`[DEBUG] Generated ${chunks.length} chunks for file:`, filePath);
+          console.log(`[DEBUG] First chunk source:`, chunks[0]?.metadata?.source);
           await window.electronAPI.saveChunksToFaiss(chunks);
+          console.log(`[DEBUG] Saved chunks to FAISS for file:`, filePath);
         }
         await refreshRagFileList();
+        // Hide loading indicator on success
+        loadingIndicator.classList.add('hidden');
       } catch (error) {
         console.error('[ERROR] Failed to process document:', error);
+        // Hide loading indicator on error
+        loadingIndicator.classList.add('hidden');
 
         // Ollamaのエラーかどうかをチェック
         const errorMessage = error.message || 'Unknown error';
@@ -363,7 +418,10 @@ async function loadModels() {
 
     // RAG file input
     document.getElementById('rag-file-input').addEventListener('change', async (event) => {
+      const loadingIndicator = document.getElementById('pdf-loading');
       try {
+        // Show loading indicator
+        loadingIndicator.classList.remove('hidden');
         // 現在選択されているembedding modelを取得
         const selectedEmbedModel = document.getElementById('embed-model').value;
 
@@ -438,13 +496,23 @@ async function loadModels() {
 
         console.log('[DEBUG] [file-input] Model check passed, processing files...');
         const files = Array.from(event.target.files);
-        for (const file of files) {
+        console.log('[DEBUG] [file-input] Number of files selected:', files.length);
+        for (let i = 0; i < files.length; i++) {
+          const file = files[i];
+          console.log(`[DEBUG] [file-input] Processing file ${i + 1}/${files.length}:`, file.path);
           const chunks = await window.electronAPI.readAndSplit(file.path);
+          console.log(`[DEBUG] [file-input] Generated ${chunks.length} chunks for file:`, file.path);
+          console.log(`[DEBUG] [file-input] First chunk source:`, chunks[0]?.metadata?.source);
           await window.electronAPI.saveChunksToFaiss(chunks);
+          console.log(`[DEBUG] [file-input] Saved chunks to FAISS for file:`, file.path);
         }
         await refreshRagFileList(); // ← 画面右の文書一覧更新
+        // Hide loading indicator on success
+        loadingIndicator.classList.add('hidden');
       } catch (error) {
         console.error('[ERROR] [file-input] Failed to process document:', error);
+        // Hide loading indicator on error
+        loadingIndicator.classList.add('hidden');
 
         // より詳細なエラーメッセージを提供
         const errorMessage = error.message || 'Unknown error';

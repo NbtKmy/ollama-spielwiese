@@ -98,6 +98,8 @@
     "faiss-node": "^0.5.1",
     "gray-matter": "^4.0.3",
     "langchain": "^0.3.36",
-    "pdfjs-dist": "2.14.305"
+    "marked": "^17.0.0",
+    "pdfjs-dist": "2.14.305",
+    "sql.js": "^1.13.0"
   }
 }
