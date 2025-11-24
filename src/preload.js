@@ -9,6 +9,8 @@ const { Document } = require('langchain/document');
 const { RecursiveCharacterTextSplitter } = require('langchain/text_splitter');
 const { OllamaEmbeddings } = require('@langchain/ollama');
 const Database = require('./database');
+const { extractFromChunk, storeExtraction } = require('./graphrag-extractor');
+const { graphRagSearch } = require('./graphrag-search');
 
 
 let embedder = new OllamaEmbeddings({
@@ -17,6 +19,10 @@ let embedder = new OllamaEmbeddings({
 
 // メインプロセスから渡された環境変数を使用
 const VECTOR_DIR = process.env.VECTOR_DB_PATH || path.join(__dirname, '../vector-db');
+
+// Vector stores
+let vectorStore = null; // Chunk embeddings
+let entityVectorStore = null; // Entity embeddings for GraphRAG
 
 // Helper function to normalize model names (remove :latest tag)
 function normalizeModelName(modelName) {
@@ -153,7 +159,6 @@ async function checkEmbedModelExists() {
 }
 
 
-let vectorStore = null;
 let db = null;
 
 const LIST_PATH = path.join(VECTOR_DIR, 'sources.json');
@@ -166,6 +171,382 @@ if (!fs.existsSync(VECTOR_DIR)) {
 // Initialize database
 const DB_PATH = path.join(VECTOR_DIR, 'documents.db');
 db = new Database(DB_PATH);
+
+/**
+ * Generate embeddings for entities that don't have embeddings yet
+ * @param {Database} db - Database instance
+ * @param {string} embeddingModel - Embedding model name
+ */
+async function generateEntityEmbeddings(db, embeddingModel) {
+  const entityStorePath = path.join(VECTOR_DIR, 'entity_faiss_store');
+
+  try {
+    console.log('[GraphRAG] Generating entity embeddings...');
+
+    // Get all entities without embeddings for this model
+    const result = db.db.exec(`
+      SELECT e.id, e.name, e.type, e.description
+      FROM entities e
+      LEFT JOIN entity_embeddings ee
+        ON e.id = ee.entity_id AND ee.embedding_model = ?
+      WHERE ee.id IS NULL
+    `, [embeddingModel]);
+
+    if (result.length === 0 || result[0].values.length === 0) {
+      console.log('[GraphRAG] No new entities to embed');
+      // Still load existing entity vector store if available
+      if (fs.existsSync(entityStorePath)) {
+        entityVectorStore = await FaissStore.load(entityStorePath, embedder);
+        console.log('[GraphRAG] Loaded existing entity vector store');
+      }
+      return;
+    }
+
+    const columns = result[0].columns;
+    const entities = result[0].values.map(row => ({
+      id: row[columns.indexOf('id')],
+      name: row[columns.indexOf('name')],
+      type: row[columns.indexOf('type')],
+      description: row[columns.indexOf('description')]
+    }));
+
+    console.log(`[GraphRAG] Embedding ${entities.length} entities...`);
+
+    // Prepare documents for FAISS
+    const entityDocs = entities.map(entity => {
+      // Combine name and description for richer embeddings
+      const text = entity.description
+        ? `${entity.name}: ${entity.description}`
+        : entity.name;
+
+      return new Document({
+        pageContent: text,
+        metadata: {
+          entity_id: entity.id,
+          entity_name: entity.name,
+          entity_type: entity.type,
+          embedding_model: embeddingModel
+        }
+      });
+    });
+
+    // Load or create entity vector store
+    // IMPORTANT: Update the GLOBAL entityVectorStore variable
+    if (fs.existsSync(entityStorePath)) {
+      entityVectorStore = await FaissStore.load(entityStorePath, embedder);
+      await entityVectorStore.addDocuments(entityDocs);
+    } else {
+      entityVectorStore = await FaissStore.fromDocuments(entityDocs, embedder);
+    }
+
+    // Save to disk
+    await entityVectorStore.save(entityStorePath);
+
+    // Get embedding dimension from the embedder
+    const sampleEmbedding = await embedder.embedQuery('test');
+    const dimension = sampleEmbedding.length;
+
+    // Save embedding records to database
+    for (const entity of entities) {
+      db.db.run(
+        'INSERT INTO entity_embeddings (entity_id, embedding_model, dimension) VALUES (?, ?, ?)',
+        [entity.id, embeddingModel, dimension]
+      );
+    }
+
+    db.save();
+
+    console.log(`[GraphRAG] Embedded ${entities.length} entities (dimension: ${dimension})`);
+  } catch (error) {
+    console.error('[GraphRAG] Failed to generate entity embeddings:', error);
+    // Non-fatal error, continue execution
+  }
+}
+
+/**
+ * Call LLM for GraphRAG entity extraction
+ * @param {string} prompt - Extraction prompt
+ * @param {string} modelName - LLM model name
+ * @returns {Promise<string>} - LLM response
+ */
+async function callLLMForExtraction(prompt, modelName) {
+  try {
+    console.log(`[GraphRAG] Calling LLM (${modelName}) for entity extraction...`);
+    console.log(`[GraphRAG] Prompt length: ${prompt.length} chars`);
+
+    const response = await fetch('http://localhost:11434/api/generate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model: modelName,
+        prompt: prompt,
+        stream: false,
+        options: {
+          temperature: 0.1, // Low temperature for structured extraction
+          num_predict: 3000, // Allow longer responses for JSON
+          num_ctx: 4096      // Increase context window
+        }
+      })
+    });
+
+    if (!response.ok) {
+      console.error('[GraphRAG] LLM HTTP error:', response.status, response.statusText);
+      return null;
+    }
+
+    const data = await response.json();
+
+    // Some models (like gpt-oss) use "thinking" field instead of "response"
+    let llmOutput = data.response?.trim();
+
+    if (!llmOutput && data.thinking) {
+      console.log('[GraphRAG] Response empty, using thinking field instead');
+      llmOutput = data.thinking.trim();
+    }
+
+    // Log the raw response for debugging
+    console.log('[GraphRAG] LLM raw response:', {
+      hasResponse: !!data.response,
+      hasThinking: !!data.thinking,
+      outputLength: llmOutput?.length || 0,
+      outputPreview: llmOutput?.substring(0, 200) + '...'
+    });
+
+    if (!llmOutput || llmOutput.length === 0) {
+      console.warn('[GraphRAG] LLM returned empty response and thinking');
+      console.warn('[GraphRAG] Full response data:', JSON.stringify(data, null, 2));
+      return null;
+    }
+
+    return llmOutput;
+  } catch (error) {
+    console.error('[GraphRAG] LLM call error:', error);
+    return null;
+  }
+}
+
+/**
+ * Extract GraphRAG entities and relationships for a document
+ * This function can be called separately from PDF upload
+ * @param {string} source - Document source path
+ * @param {string} chatModel - Chat model for extraction
+ * @param {Function} progressCallback - Callback for progress updates
+ * @returns {Promise<Object>} - Extraction statistics
+ */
+async function extractGraphRAGForDocument(source, chatModel, progressCallback = null) {
+  try {
+    // データベースの初期化を確認
+    if (!db.db) {
+      await db.init();
+    }
+
+    // Get document ID
+    const docIds = db.getDocumentIdsBySource(source);
+    if (docIds.length === 0) {
+      throw new Error(`Document not found: ${source}`);
+    }
+
+    const docId = docIds[0];
+
+    // Get all chunks for this document
+    const chunks = db.getChunksByDocumentId(docId);
+    if (chunks.length === 0) {
+      throw new Error(`No chunks found for document: ${source}`);
+    }
+
+    console.log(`[GraphRAG] Starting extraction for ${chunks.length} chunks from: ${source}`);
+
+    let totalEntities = 0;
+    let totalRelationships = 0;
+    let totalMentions = 0;
+
+    // バッチサイズ：同時に処理するチャンク数
+    const BATCH_SIZE = 8;
+    const totalBatches = Math.ceil(chunks.length / BATCH_SIZE);
+
+    console.log(`[GraphRAG] Processing ${chunks.length} chunks in ${totalBatches} batches (batch size: ${BATCH_SIZE})`);
+
+    for (let batchIndex = 0; batchIndex < totalBatches; batchIndex++) {
+      const batchStart = batchIndex * BATCH_SIZE;
+      const batchEnd = Math.min(batchStart + BATCH_SIZE, chunks.length);
+      const batchChunks = chunks.slice(batchStart, batchEnd);
+
+      // バッチ内のチャンクを並列処理
+      const batchPromises = batchChunks.map(async (chunk) => {
+        try {
+          // Check if this chunk already has GraphRAG data
+          const existingMentions = db.db.exec(
+            'SELECT COUNT(*) as count FROM entity_mentions WHERE chunk_id = ?',
+            [chunk.id]
+          );
+          const mentionCount = existingMentions[0]?.values[0]?.[0] || 0;
+
+          if (mentionCount > 0) {
+            console.log(`[GraphRAG] Chunk ${chunk.id} already has GraphRAG data, skipping`);
+            return {
+              success: true,
+              chunkId: chunk.id,
+              skipped: true,
+              stats: { entities: 0, relationships: 0, mentions: 0 }
+            };
+          }
+
+          // LLM関数を作成（モデル名を使用）
+          const llmFunction = async (prompt) => {
+            return await callLLMForExtraction(prompt, chatModel);
+          };
+
+          // エンティティと関係を抽出
+          const extraction = await extractFromChunk(chunk.content, llmFunction);
+
+          if (extraction) {
+            // データベースに保存
+            const stats = storeExtraction(db, chunk.id, extraction);
+            return {
+              success: true,
+              chunkId: chunk.id,
+              skipped: false,
+              stats
+            };
+          }
+
+          return {
+            success: false,
+            chunkId: chunk.id,
+            skipped: false,
+            stats: { entities: 0, relationships: 0, mentions: 0 }
+          };
+        } catch (error) {
+          console.error(`[GraphRAG] Failed to extract from chunk ${chunk.id}:`, error);
+          return {
+            success: false,
+            chunkId: chunk.id,
+            skipped: false,
+            error: error.message,
+            stats: { entities: 0, relationships: 0, mentions: 0 }
+          };
+        }
+      });
+
+      // バッチ内の全処理を待機
+      const batchResults = await Promise.all(batchPromises);
+
+      // 統計情報を集計
+      for (const result of batchResults) {
+        totalEntities += result.stats.entities;
+        totalRelationships += result.stats.relationships;
+        totalMentions += result.stats.mentions;
+      }
+
+      // バッチごとに進捗表示
+      const processedCount = batchEnd;
+      const successCount = batchResults.filter(r => r.success && !r.skipped).length;
+      const skippedCount = batchResults.filter(r => r.skipped).length;
+
+      const progress = {
+        processed: processedCount,
+        total: chunks.length,
+        successful: successCount,
+        skipped: skippedCount,
+        batchIndex: batchIndex + 1,
+        totalBatches: totalBatches
+      };
+
+      console.log(
+        `[GraphRAG] Batch ${progress.batchIndex}/${progress.totalBatches}: ` +
+        `Processed ${progress.processed}/${progress.total} chunks ` +
+        `(${successCount} successful, ${skippedCount} skipped in this batch)`
+      );
+
+      // Call progress callback if provided
+      if (progressCallback) {
+        progressCallback(progress);
+      }
+    }
+
+    console.log(
+      `[GraphRAG] Extraction complete: ${totalEntities} entities, ${totalRelationships} relationships, ${totalMentions} mentions`
+    );
+
+    // グラフ統計を表示
+    const graphStats = db.getGraphStats();
+    console.log(`[GraphRAG] Total graph size: ${graphStats.entities} entities, ${graphStats.relationships} relationships`);
+
+    // GraphRAG: エンティティの埋め込みを生成して保存
+    const embeddingModel = embedder.model;
+    await generateEntityEmbeddings(db, embeddingModel);
+
+    return {
+      success: true,
+      source,
+      totalChunks: chunks.length,
+      entities: totalEntities,
+      relationships: totalRelationships,
+      mentions: totalMentions
+    };
+  } catch (error) {
+    console.error('[GraphRAG] Extraction failed:', error);
+    throw error;
+  }
+}
+
+/**
+ * Get GraphRAG extraction progress for a document
+ * @param {string} source - Document source path
+ * @returns {Object} - Progress information
+ */
+function getGraphRAGProgress(source) {
+  try {
+    // データベースの初期化を確認
+    if (!db.db) {
+      throw new Error('Database not initialized');
+    }
+
+    // Get document ID
+    const docIds = db.getDocumentIdsBySource(source);
+    if (docIds.length === 0) {
+      return {
+        totalChunks: 0,
+        processedChunks: 0,
+        percentage: 0
+      };
+    }
+
+    const docId = docIds[0];
+
+    // Get total chunks count
+    const totalResult = db.db.exec(
+      'SELECT COUNT(*) as count FROM chunks WHERE document_id = ?',
+      [docId]
+    );
+    const totalChunks = totalResult[0]?.values[0]?.[0] || 0;
+
+    // Get processed chunks count (chunks with entity mentions)
+    const processedResult = db.db.exec(
+      `SELECT COUNT(DISTINCT c.id) as count
+       FROM chunks c
+       INNER JOIN entity_mentions em ON c.id = em.chunk_id
+       WHERE c.document_id = ?`,
+      [docId]
+    );
+    const processedChunks = processedResult[0]?.values[0]?.[0] || 0;
+
+    const percentage = totalChunks > 0 ? Math.round((processedChunks / totalChunks) * 100) : 0;
+
+    return {
+      totalChunks,
+      processedChunks,
+      percentage
+    };
+  } catch (error) {
+    console.error('[GraphRAG] Failed to get progress:', error);
+    return {
+      totalChunks: 0,
+      processedChunks: 0,
+      percentage: 0
+    };
+  }
+}
 
 async function saveChunksToFaiss(chunks) {
   const storePath = path.join(VECTOR_DIR, 'faiss_store');
@@ -244,6 +625,8 @@ async function saveChunksToFaiss(chunks) {
     // SQLiteに保存
     db.save();
 
+    console.log(`[INFO] Saved ${chunks.length} chunks to SQLite (GraphRAG extraction skipped)`);
+
     // 2. FAISSにはベクトルとchunk_idを保存（ベクトル生成のためにテキストは必要）
     const docsForFaiss = chunks.map((chunk, i) => ({
       pageContent: chunk.pageContent, // ベクトル生成に必要
@@ -268,7 +651,16 @@ async function saveChunksToFaiss(chunks) {
     // ディスクに保存
     await vectorStore.save(storePath);
 
-    console.log(`[INFO] Saved ${chunks.length} chunks to SQLite and FAISS`);
+    console.log(`[INFO] Saved ${chunks.length} chunks from ${source} to SQLite and FAISS`);
+
+    // Debug: Show total documents in vector store
+    try {
+      const allStoredDocs = await vectorStore.similaritySearch('', 10);
+      const uniqueSources = new Set(allStoredDocs.map(doc => doc.metadata?.source?.split('/').pop() || 'unknown'));
+      console.log(`[INFO] Vector store now contains ${allStoredDocs.length}+ chunks from ${uniqueSources.size} unique documents:`, Array.from(uniqueSources));
+    } catch (debugError) {
+      console.log('[DEBUG] Could not get vector store stats:', debugError.message);
+    }
   } catch (error) {
     console.error('[ERROR] Failed to save chunks to vector store:', error);
 
@@ -386,6 +778,18 @@ async function loadVectorStore() {
       }
     }
   }
+
+  // Load entity vector store for GraphRAG
+  const entityStorePath = path.join(VECTOR_DIR, 'entity_faiss_store');
+  if (fs.existsSync(entityStorePath)) {
+    try {
+      entityVectorStore = await FaissStore.load(entityStorePath, embedder);
+      console.log('[GraphRAG] Entity vector store loaded');
+    } catch (error) {
+      console.warn('[GraphRAG] Failed to load entity vector store:', error);
+      entityVectorStore = null;
+    }
+  }
 }
 
 
@@ -396,11 +800,46 @@ async function searchFromStoreEmbedding(query, k = 3) {
     await db.init();
   }
 
-  if (!vectorStore) throw new Error('No vector store loaded');
+  if (!vectorStore) {
+    // Try to load vector store if it exists
+    const storePath = path.join(VECTOR_DIR, 'faiss_store');
+    if (fs.existsSync(storePath)) {
+      console.log('[INFO] Vector store not loaded, attempting to load now...');
+      try {
+        await loadVectorStore();
+        if (!vectorStore) {
+          throw new Error('Failed to load vector store after retry');
+        }
+      } catch (error) {
+        console.error('[ERROR] Failed to load vector store:', error);
+        throw new Error(
+          `Vector store could not be loaded. This may be due to:\n` +
+          `1. Embedding model mismatch (current: ${embedder.model})\n` +
+          `2. Corrupted vector store\n` +
+          `Please try re-uploading your documents.\n\n` +
+          `Original error: ${error.message}`
+        );
+      }
+    } else {
+      throw new Error(
+        'No vector store found. Please upload at least one document to use RAG.\n' +
+        `Store path: ${storePath}`
+      );
+    }
+  }
 
   try {
     // 1. FAISSからベクトル検索（chunk_idを取得）
     const faissResults = await vectorStore.similaritySearch(query, k);
+
+    // Debug: Log sources returned by FAISS
+    const faissSourceCounts = {};
+    for (const result of faissResults) {
+      const source = result.metadata?.source || 'unknown';
+      const fileName = source.split('/').pop();
+      faissSourceCounts[fileName] = (faissSourceCounts[fileName] || 0) + 1;
+    }
+    console.log(`[Search] FAISS returned ${faissResults.length} results from documents:`, faissSourceCounts);
 
     // 2. SQLiteからchunk_idを使ってテキストを取得
     const results = faissResults.map(result => {
@@ -631,9 +1070,111 @@ async function searchFromStoreHybrid(query, k = 3, chatModel = null, chatHistory
   }
 }
 
-// Backward compatibility: default to embedding search
-async function searchFromStore(query, k = 3) {
-  return searchFromStoreEmbedding(query, k);
+/**
+ * Main search function with RAG mode selection and GraphRAG integration
+ * @param {string} query - Search query
+ * @param {number} k - Number of results
+ * @param {Object} options - Search options
+ * @param {string} options.mode - RAG mode: 'embedding', 'fulltext', or 'hybrid'
+ * @param {boolean} options.useChunkRAG - Whether to use chunk-based RAG
+ * @param {boolean} options.useGraphRAG - Whether to use GraphRAG
+ * @param {string} options.chatModel - Chat model for query rewriting
+ * @param {Array} options.chatHistory - Chat history for context
+ * @returns {Promise<Array>} Search results
+ */
+async function searchFromStore(query, k = 3, options = {}) {
+  const {
+    mode = 'embedding',
+    useChunkRAG = true,
+    useGraphRAG = false,
+    chatModel = null,
+    chatHistory = []
+  } = options;
+
+  console.log(`[Search] Mode: ${mode}, ChunkRAG: ${useChunkRAG}, GraphRAG: ${useGraphRAG}`);
+
+  let allResults = [];
+
+  // Chunk-based RAG (通常RAG)
+  if (useChunkRAG) {
+    try {
+      let chunkResults = [];
+
+      if (mode === 'embedding') {
+        chunkResults = await searchFromStoreEmbedding(query, k);
+      } else if (mode === 'fulltext') {
+        chunkResults = await searchFromStoreFullText(query, k, chatModel, chatHistory);
+      } else if (mode === 'hybrid') {
+        chunkResults = await searchFromStoreHybrid(query, k, chatModel, chatHistory);
+      }
+
+      console.log(`[Search] Chunk RAG found ${chunkResults.length} results`);
+      allResults = allResults.concat(chunkResults);
+    } catch (error) {
+      console.error('[Search] Chunk RAG failed:', error);
+    }
+  }
+
+  // GraphRAG (Entity-based RAG)
+  if (useGraphRAG) {
+    try {
+      const graphResults = await graphRagSearch({
+        db,
+        entityVectorStore,
+        query,
+        topEntities: 3,
+        maxRelated: 5,
+        maxChunks: k
+      });
+
+      console.log(`[Search] GraphRAG found ${graphResults.chunks.length} chunks from ${graphResults.entities.length} entities`);
+
+      // Convert GraphRAG chunks to standard format
+      const graphChunks = graphResults.chunks.map(chunk => ({
+        pageContent: chunk.content,
+        metadata: {
+          source: chunk.source,
+          page: chunk.page,
+          chunk_index: chunk.chunk_index,
+          chunk_id: chunk.id,
+          entity_names: chunk.entity_names,
+          entity_types: chunk.entity_types,
+          entity_count: chunk.entity_count,
+          graphrag: true // Mark as GraphRAG result
+        }
+      }));
+
+      allResults = allResults.concat(graphChunks);
+    } catch (error) {
+      console.error('[Search] GraphRAG failed:', error);
+    }
+  }
+
+  // Deduplicate results by chunk_id
+  const seenChunkIds = new Set();
+  const deduplicatedResults = [];
+
+  for (const result of allResults) {
+    const chunkId = result.metadata?.chunk_id;
+    if (chunkId && !seenChunkIds.has(chunkId)) {
+      seenChunkIds.add(chunkId);
+      deduplicatedResults.push(result);
+    } else if (!chunkId) {
+      // No chunk_id (shouldn't happen, but include anyway)
+      deduplicatedResults.push(result);
+    }
+  }
+
+  // Log document sources for debugging
+  const sourceCounts = {};
+  for (const result of deduplicatedResults) {
+    const source = result.metadata?.source || 'unknown';
+    const fileName = source.split('/').pop();
+    sourceCounts[fileName] = (sourceCounts[fileName] || 0) + 1;
+  }
+  console.log(`[Search] Returning ${deduplicatedResults.length} deduplicated results from documents:`, sourceCounts);
+
+  return deduplicatedResults.slice(0, k * 2); // Return up to 2x requested for diversity
 }
 
 /*
@@ -751,6 +1292,10 @@ async function deleteDocumentFromStore(sourcePath) {
 
     // 3. SQLiteから削除（CASCADEで関連チャンクも自動削除）
     db.deleteDocumentBySource(sourcePath);
+
+    // 4. GraphRAG: 孤立したエンティティと関係のクリーンアップ
+    db.cleanupOrphanedGraphData();
+
     db.save();
 
     console.log(`[INFO] Successfully deleted document: ${sourcePath}`);
@@ -852,12 +1397,16 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getCurrentEmbedderModel: () => embedder.model,
   deleteDocumentFromStore,
   checkEmbedModelExists,
+  extractGraphRAGForDocument,
+  getGraphRAGProgress,
   openFileDialog: () => {
     console.log('[DEBUG] openFileDialog called in preload');
     return ipcRenderer.invoke('open-file-dialog');
   },
+  openManageRAGWindow: () => ipcRenderer.invoke('open-manage-rag-window'),
   getServerPort: () => ipcRenderer.invoke('get-server-port'),
   onServerError: (callback) => ipcRenderer.on('server-error', (_event, data) => callback(data)),
+  onGraphRAGProgress: (callback) => ipcRenderer.on('graphrag-progress', (_event, data) => callback(data)),
 });
 
 console.log('[DEBUG] electronAPI.openFileDialog:', typeof window.electronAPI?.openFileDialog);

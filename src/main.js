@@ -2,6 +2,7 @@ const { app, BrowserWindow, ipcMain, dialog, Menu } = require('electron');
 const path = require('path');
 
 let mainWindow;
+let manageRAGWindow = null;
 
 // グローバルにmainWindowを設定（server.jsからアクセスできるように）
 global.mainWindow = null;
@@ -42,6 +43,13 @@ function createMainWindow() {
     : path.join(__dirname, '../build/index.html');
 
   mainWindow.loadFile(indexPath);
+
+  // クリック時にウィンドウを前面に表示
+  mainWindow.on('focus', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.moveTop();
+    }
+  });
 
   // DevToolsは自動では開かない（メニューやショートカットから開けるようにする）
   // mainWindow.webContents.openDevTools();
@@ -191,4 +199,43 @@ ipcMain.handle('get-server-port', () => {
     return null;
   }
   return server.getPort();
+});
+
+// RAG管理ウィンドウを開く
+ipcMain.handle('open-manage-rag-window', () => {
+  if (manageRAGWindow) {
+    manageRAGWindow.focus();
+    return;
+  }
+
+  manageRAGWindow = new BrowserWindow({
+    width: 800,
+    height: 700,
+    minWidth: 700,
+    webPreferences: {
+      preload: path.join(__dirname, 'preload.js'),
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: false
+    },
+    parent: mainWindow,
+    title: 'Manage RAG Documents'
+  });
+
+  const managePath = app.isPackaged
+    ? path.join(__dirname, '../build/manage-rag.html')
+    : path.join(__dirname, '../build/manage-rag.html');
+
+  manageRAGWindow.loadFile(managePath);
+
+  // クリック時にウィンドウを前面に表示
+  manageRAGWindow.on('focus', () => {
+    if (manageRAGWindow && !manageRAGWindow.isDestroyed()) {
+      manageRAGWindow.moveTop();
+    }
+  });
+
+  manageRAGWindow.on('closed', () => {
+    manageRAGWindow = null;
+  });
 });

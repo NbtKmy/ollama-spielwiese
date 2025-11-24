@@ -7,14 +7,14 @@
   </head>
   <body class="dark bg-gray-900 text-white flex h-screen">
 
-    <div class="left p-4 w-1/2 border-r border-gray-700 bg-gray-900 overflow-y-auto flex flex-col">
+    <div class="left p-4 w-2/3 border-r border-gray-700 bg-gray-900 overflow-y-auto flex flex-col">
       <div id="chat-log" class="flex flex-col gap-2 mb-4 overflow-y-auto flex-1"></div>
-  
+
       <textarea id="prompt" class="bg-gray-800 p-2 rounded text-white" rows="4" placeholder="Write anything"></textarea>
       <button id="send" class="mt-2 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded">Submit</button>
     </div>
-  
-    <div class="right p-4 w-1/4 bg-gray-800 flex flex-col gap-2 overflow-y-auto">
+
+    <div class="right p-4 w-1/3 bg-gray-800 flex flex-col gap-2 overflow-y-auto">
       <label for="model-select">Select a model:</label>
       <select id="model-select" class="bg-gray-700 text-white p-2 rounded"></select>
 
@@ -88,37 +88,45 @@
 
       <button class="mt-2 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded" onclick="resetChat()">New Chat</button>
       <button class="mt-2 bg-blue-600 hover:bg-blue-700 px-4 py-2 rounded" onclick="exportChat()">Export Chat</button>
-      <button id="use-rag" class="bg-blue-600 text-white px-4 py-2 rounded">Load PDF for RAG</button>
-        <input type="file" id="rag-file-input" class="hidden" multiple />
-      <div id="pdf-loading" class="hidden mt-2 flex items-center gap-2 text-sm text-blue-400">
-        <div class="spinner"></div>
-        <span>Processing PDF...</span>
-      </div>
-      <label class="flex items-center gap-2 mt-2">
-        <input type="checkbox" id="use-rag-checkbox" class="accent-blue-600" />
-        <span>Apply RAG</span>
-      </label>
+      <button id="manage-rag" class="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded">📚 Manage RAG Documents</button>
 
-      <div id="rag-mode-selector" class="mt-2 ml-6 space-y-1">
-        <label class="text-xs font-bold">RAG Mode:</label>
-        <label class="flex items-center gap-2 text-sm">
-          <input type="radio" name="rag-mode" value="embedding" checked class="accent-blue-600" />
-          <span>Embedding (Vector)</span>
-        </label>
-        <label class="flex items-center gap-2 text-sm">
-          <input type="radio" name="rag-mode" value="fulltext" class="accent-blue-600" />
-          <span>Full-text (Keyword)</span>
-        </label>
-        <label class="flex items-center gap-2 text-sm">
-          <input type="radio" name="rag-mode" value="hybrid" class="accent-blue-600" />
-          <span>Hybrid (Both)</span>
-        </label>
+      <!-- RAG Settings Card -->
+      <div class="mt-4 p-3 bg-gray-700 rounded-lg border border-gray-600">
+        <div class="text-sm font-bold mb-3 text-blue-300">📚 RAG Settings</div>
+
+        <!-- Chunk-based RAG -->
+        <div class="mb-3 p-2 bg-gray-800 rounded border border-gray-600">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" id="use-rag-checkbox" class="w-4 h-4 accent-blue-600" />
+            <span class="font-medium">Apply RAG (Chunks)</span>
+          </label>
+
+          <div id="rag-mode-selector" class="mt-2 pl-6 space-y-1.5">
+            <div class="text-xs text-gray-400 mb-1.5">Search Method:</div>
+            <label class="flex items-center gap-2 text-sm cursor-pointer hover:text-blue-300 transition">
+              <input type="radio" name="rag-mode" value="embedding" checked class="w-3.5 h-3.5 accent-blue-500" />
+              <span>🔍 Embedding (Vector)</span>
+            </label>
+            <label class="flex items-center gap-2 text-sm cursor-pointer hover:text-blue-300 transition">
+              <input type="radio" name="rag-mode" value="fulltext" class="w-3.5 h-3.5 accent-blue-500" />
+              <span>📝 Full-text (Keyword)</span>
+            </label>
+            <label class="flex items-center gap-2 text-sm cursor-pointer hover:text-blue-300 transition">
+              <input type="radio" name="rag-mode" value="hybrid" class="w-3.5 h-3.5 accent-blue-500" />
+              <span>⚡ Hybrid (Both)</span>
+            </label>
+          </div>
+        </div>
+
+        <!-- GraphRAG -->
+        <div class="p-2 bg-gray-800 rounded border border-gray-600">
+          <label class="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" id="use-graphrag-checkbox" class="w-4 h-4 accent-green-600" />
+            <span class="font-medium">🕸️ Use GraphRAG (Entities)</span>
+          </label>
+        </div>
       </div>
     </div>
-    <div class="p-4 w-1/4 bg-gray-900 text-white border-l border-gray-700 overflow-y-auto">
-        <h3 class="text-sm font-bold mb-2">📂 RAG Texts</h3>
-        <ul id="rag-file-list" class="space-y-1 text-sm"></ul>
-    </div>
-  
+
   </body>
   </html>

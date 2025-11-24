@@ -1,0 +1,268 @@
+<!doctype html><html lang="en"><head><meta charset="UTF-8"/><title>Manage RAG Documents</title><link rel="stylesheet" href="style.css"/><style>.manage-rag-container {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        background: #1f2937;
+        color: white;
+      }
+
+      .header {
+        padding: 20px 20px 10px 20px;
+        border-bottom: 1px solid #374151;
+      }
+
+      .header h1 {
+        font-size: 24px;
+        font-weight: bold;
+        margin-bottom: 5px;
+      }
+
+      .header p {
+        font-size: 14px;
+        color: #9ca3af;
+        margin: 0;
+      }
+
+      .main-content {
+        display: flex;
+        flex: 1;
+        overflow: hidden;
+      }
+
+      .left-panel {
+        width: 350px;
+        padding: 20px;
+        border-right: 1px solid #374151;
+        overflow-y: auto;
+      }
+
+      .right-panel {
+        flex: 1;
+        padding: 20px;
+        overflow-y: auto;
+      }
+
+      .section {
+        margin-bottom: 25px;
+      }
+
+      .section-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: #9ca3af;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+        margin-bottom: 12px;
+      }
+
+      .info-item {
+        background: #111827;
+        padding: 12px;
+        border-radius: 6px;
+        margin-bottom: 8px;
+      }
+
+      .info-label {
+        font-size: 12px;
+        color: #6b7280;
+        margin-bottom: 4px;
+      }
+
+      .info-value {
+        font-size: 14px;
+        font-weight: 500;
+        color: #f3f4f6;
+      }
+
+      .actions {
+        display: flex;
+        flex-direction: column;
+        gap: 10px;
+      }
+
+      .btn {
+        padding: 10px 20px;
+        border-radius: 6px;
+        border: none;
+        cursor: pointer;
+        font-weight: 500;
+        transition: all 0.2s;
+        width: 100%;
+      }
+
+      .btn-primary {
+        background: #3b82f6;
+        color: white;
+      }
+
+      .btn-primary:hover {
+        background: #2563eb;
+      }
+
+      .btn-secondary {
+        background: #6b7280;
+        color: white;
+      }
+
+      .btn-secondary:hover {
+        background: #4b5563;
+      }
+
+      .model-select {
+        width: 100%;
+        padding: 8px 12px;
+        background: #374151;
+        border: 1px solid #4b5563;
+        border-radius: 6px;
+        color: white;
+        font-size: 14px;
+        cursor: pointer;
+      }
+
+      .model-select:focus {
+        outline: none;
+        border-color: #3b82f6;
+      }
+
+      .document-list {
+        display: flex;
+        flex-direction: column;
+        gap: 15px;
+      }
+
+      .document-item {
+        background: #1f2937;
+        border: 1px solid #374151;
+        border-radius: 6px;
+        padding: 15px;
+        margin-bottom: 15px;
+      }
+
+      .document-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 10px;
+      }
+
+      .document-name {
+        font-weight: 600;
+        font-size: 16px;
+        color: #f3f4f6;
+      }
+
+      .document-meta {
+        font-size: 12px;
+        color: #9ca3af;
+        margin-bottom: 10px;
+      }
+
+      .document-actions {
+        display: flex;
+        gap: 10px;
+        align-items: center;
+      }
+
+      .progress-container {
+        margin-top: 10px;
+        padding: 10px;
+        background: #111827;
+        border-radius: 4px;
+        display: none;
+      }
+
+      .progress-container.active {
+        display: block;
+      }
+
+      .progress-bar-container {
+        width: 100%;
+        height: 20px;
+        background: #374151;
+        border-radius: 10px;
+        overflow: hidden;
+        margin-bottom: 8px;
+      }
+
+      .progress-bar {
+        height: 100%;
+        background: linear-gradient(90deg, #10b981, #059669);
+        transition: width 0.3s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 12px;
+        font-weight: 600;
+        color: white;
+      }
+
+      .progress-text {
+        font-size: 12px;
+        color: #d1d5db;
+      }
+
+      .btn-small {
+        padding: 6px 12px;
+        font-size: 13px;
+      }
+
+      .btn-delete {
+        background: #ef4444;
+        color: white;
+      }
+
+      .btn-delete:hover {
+        background: #dc2626;
+      }
+
+      .btn-extract {
+        background: #10b981;
+        color: white;
+      }
+
+      .btn-extract:hover {
+        background: #059669;
+      }
+
+      .btn-extract:disabled {
+        background: #6b7280;
+        cursor: not-allowed;
+      }
+
+      .loading-indicator {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        padding: 10px;
+        background: #1f2937;
+        border-radius: 6px;
+        margin-bottom: 15px;
+      }
+
+      .loading-indicator.hidden {
+        display: none;
+      }
+
+      .spinner {
+        width: 16px;
+        height: 16px;
+        border: 2px solid #374151;
+        border-top-color: #3b82f6;
+        border-radius: 50%;
+        animation: spin 0.8s linear infinite;
+      }
+
+      @keyframes spin {
+        to { transform: rotate(360deg); }
+      }
+
+      .empty-state {
+        text-align: center;
+        padding: 40px;
+        color: #6b7280;
+      }
+
+      .empty-state-icon {
+        font-size: 48px;
+        margin-bottom: 10px;
+      }</style><script defer="defer" src="manage-rag.js"></script></head><body class="dark bg-gray-900 text-white"><div class="manage-rag-container"><div class="header"><h1>📚 Manage RAG Documents</h1><p>Upload documents and extract GraphRAG entities</p></div><div class="main-content"><div class="left-panel"><div class="section"><div class="section-title">Embedding Model</div><div class="info-item"><div class="info-label">Current Model</div><div class="info-value" id="current-embed-model">Loading...</div></div></div><div class="section"><div class="section-title">Document Actions</div><div class="actions"><button id="upload-btn" class="btn btn-primary">📄 Upload Documents</button></div></div><div class="section"><div class="section-title">GraphRAG Extraction</div><div class="info-item" style="margin-bottom: 12px;"><div class="info-label">Chat Model for Extraction</div><select id="graph-model-select" class="model-select"><option value="">Loading models...</option></select></div><div class="actions"><button id="extract-all-btn" class="btn btn-extract">🕸️ Extract All Unprocessed</button> <button id="stop-extract-btn" class="btn btn-delete" style="display: none;">⏹️ Stop Extraction</button></div></div><div class="section"><div class="section-title">Statistics</div><div class="info-item"><div class="info-label">Total Documents</div><div class="info-value" id="stat-total-docs">0</div></div><div class="info-item"><div class="info-label">Fully Extracted</div><div class="info-value" id="stat-extracted-docs">0</div></div></div><div id="loading-indicator" class="loading-indicator hidden"><div class="spinner"></div><span>Processing...</span></div></div><div class="right-panel"><div class="section-title" style="margin-bottom: 15px;">Uploaded Documents</div><div class="document-list" id="document-list"><div class="empty-state"><div class="empty-state-icon">📭</div><p>No documents uploaded yet</p><p style="font-size: 12px; margin-top: 5px;">Click "Upload Documents" to get started</p></div></div></div></div></div><script src="../build/manage-rag.js"></script></body></html>

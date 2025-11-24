@@ -125,37 +125,51 @@ async function loadModels() {
 
       if (useRag) {
         try {
-          // Get selected RAG mode
+          // Get RAG settings
+          const useChunkRAG = document.getElementById('use-rag-checkbox').checked;
+          const useGraphRAG = document.getElementById('use-graphrag-checkbox').checked;
           const ragMode = document.querySelector('input[name="rag-mode"]:checked').value;
-          let results;
 
-          // Call appropriate search function based on RAG mode
-          if (ragMode === 'embedding') {
-            results = await window.electronAPI.searchFromStoreEmbedding(prompt);
-          } else if (ragMode === 'fulltext') {
-            // Pass chat model and history for context-aware query rewriting
-            results = await window.electronAPI.searchFromStoreFullText(prompt, 3, model, messages);
-          } else if (ragMode === 'hybrid') {
-            // Pass chat model and history for context-aware hybrid search
-            results = await window.electronAPI.searchFromStoreHybrid(prompt, 3, model, messages);
-          }
+          console.log('[DEBUG] RAG Settings:', { useChunkRAG, useGraphRAG, ragMode });
+
+          // Call unified search function with options
+          const results = await window.electronAPI.searchFromStore(prompt, 3, {
+            mode: ragMode,
+            useChunkRAG: useChunkRAG,
+            useGraphRAG: useGraphRAG,
+            chatModel: model,
+            chatHistory: messages
+          });
 
           if (results.length === 0) {
             alert('Reference information not found. Send as normal chat.');
             messages.push({ role: 'user', content: prompt });
           } else {
             const context = results.map(doc => doc.pageContent).join('\n---\n');
-            // Get source information with page numbers
+
+            // Get source information with page numbers and entity info
             const sourceInfo = results.map(doc => {
               const fullPath = doc.metadata?.source || 'Unknown';
-              // Extract only the filename from the full path
               const fileName = fullPath.split('/').pop();
               const pageNum = doc.metadata?.page;
-              return pageNum ? `${fileName} (p.${pageNum})` : fileName;
+              let info = pageNum ? `${fileName} (p.${pageNum})` : fileName;
+
+              // Add entity information for GraphRAG results
+              if (doc.metadata?.graphrag && doc.metadata?.entity_names?.length > 0) {
+                const entityLabels = doc.metadata.entity_names.map((name, idx) => {
+                  const type = doc.metadata.entity_types?.[idx];
+                  return type ? `${name} (${type})` : name;
+                });
+                info += ` [🕸️ ${entityLabels.join(', ')}]`;
+              }
+
+              return info;
             });
+
             // Remove duplicates while preserving order
             const uniqueSources = [...new Set(sourceInfo)];
             citations = uniqueSources.map(src => `・${src}`).join('\n');
+
             messages.push({
               role: 'user',
               content: `Answer the question based on the following references:\n${context}\n\nQuestion: ${prompt}`
@@ -267,12 +281,22 @@ async function loadModels() {
     // ベクターストアをバックグラウンドでロード（失敗してもUIには影響しない）
     try {
       await window.electronAPI.loadVectorStore();
-      await refreshRagFileList();
     } catch (error) {
       console.error('Failed to load vector store:', error);
     }
 
-    // Load PDF for RAG button
+    // Manage RAG Documents button
+    document.getElementById('manage-rag').addEventListener('click', async () => {
+      try {
+        await window.electronAPI.openManageRAGWindow();
+      } catch (error) {
+        console.error('[ERROR] Failed to open Manage RAG window:', error);
+        alert(`Failed to open Manage RAG window: ${error.message}`);
+      }
+    });
+
+    // REMOVED: Old Load PDF for RAG button code
+    /*
     document.getElementById('use-rag').addEventListener('click', async () => {
       console.log('[DEBUG] Load PDF button clicked');
       const loadingIndicator = document.getElementById('pdf-loading');
@@ -361,6 +385,7 @@ async function loadModels() {
         }
 
         console.log('[DEBUG] Number of files selected:', paths.length);
+
         for (let i = 0; i < paths.length; i++) {
           const filePath = paths[i];
           console.log(`[DEBUG] Processing file ${i + 1}/${paths.length}:`, filePath);
@@ -415,7 +440,10 @@ async function loadModels() {
         }
       }
     });
+    */
 
+    // REMOVED: Old RAG file input code
+    /*
     // RAG file input
     document.getElementById('rag-file-input').addEventListener('change', async (event) => {
       const loadingIndicator = document.getElementById('pdf-loading');
@@ -497,6 +525,7 @@ async function loadModels() {
         console.log('[DEBUG] [file-input] Model check passed, processing files...');
         const files = Array.from(event.target.files);
         console.log('[DEBUG] [file-input] Number of files selected:', files.length);
+
         for (let i = 0; i < files.length; i++) {
           const file = files[i];
           console.log(`[DEBUG] [file-input] Processing file ${i + 1}/${files.length}:`, file.path);
@@ -555,6 +584,7 @@ async function loadModels() {
         event.target.value = '';
       }
     });
+    */
 
     // Embedding model change handler
     document.getElementById('embed-model').addEventListener('change', async (e) => {
@@ -589,8 +619,7 @@ async function loadModels() {
         await window.electronAPI.setEmbedderModel(selected, true);
       }
 
-      // モデル変更後、ファイルリストを更新して実際のストアの状態を反映
-      await refreshRagFileList();
+      // Note: File list refresh removed since PDF management moved to separate window
     });
   });
 
@@ -669,49 +698,4 @@ function exportChat() {
   }
 window.exportChat = exportChat;
 
-async function refreshRagFileList() {
-    const list = document.getElementById('rag-file-list');
-    list.innerHTML = '';
-    const sources = await window.electronAPI.getStoredSources();
-    for (const item of sources) {
-      const li = document.createElement('li');
-      li.className = 'rag-file-item';
-
-      const fileInfo = document.createElement('div');
-      fileInfo.className = 'file-info';
-
-      const fileName = document.createElement('span');
-      fileName.textContent = item.source.split('/').pop();
-      fileName.className = 'file-name';
-
-      const modelName = document.createElement('span');
-      modelName.textContent = `(${item.models.join(', ')})`;
-      modelName.className = 'model-name';
-      modelName.style.fontSize = '0.85em';
-      modelName.style.color = '#666';
-      modelName.style.marginLeft = '8px';
-
-      fileInfo.appendChild(fileName);
-      fileInfo.appendChild(modelName);
-
-      const deleteBtn = document.createElement('button');
-      deleteBtn.textContent = '🗑️';
-      deleteBtn.className = 'delete-btn';
-      deleteBtn.title = 'Delete this document';
-      deleteBtn.onclick = async (e) => {
-        e.stopPropagation();
-        if (confirm(`Are you sure you want to delete "${item.source.split('/').pop()}"?`)) {
-          try {
-            await window.electronAPI.deleteDocumentFromStore(item.source);
-            await refreshRagFileList();
-          } catch (error) {
-            alert(`Failed to delete document: ${error.message}`);
-          }
-        }
-      };
-
-      li.appendChild(fileInfo);
-      li.appendChild(deleteBtn);
-      list.appendChild(li);
-    }
-  }
+// REMOVED: refreshRagFileList function - moved to manage-rag.js

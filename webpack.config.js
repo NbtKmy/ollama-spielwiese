@@ -6,6 +6,7 @@ module.exports = {
   mode: 'production',
   entry: {
     renderer: './src/renderer.js',
+    'manage-rag': './src/manage-rag.js',
   },
   output: {
     path: path.resolve(__dirname, 'build'),
@@ -40,9 +41,14 @@ module.exports = {
       filename: 'index.html',
       chunks: ['renderer'],
     }),
+    new HtmlWebpackPlugin({
+      template: './public/manage-rag.html',
+      filename: 'manage-rag.html',
+      chunks: ['manage-rag'],
+    }),
     new CopyWebpackPlugin({
         patterns: [
-          { from: 'public/style.css', to: 'style.css' }, 
+          { from: 'public/style.css', to: 'style.css' },
         ],
     }),
   ],
