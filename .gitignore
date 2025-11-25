@@ -221,3 +221,4 @@ spec/fixtures/logo.png
 # Vector database files (user-generated data)
 vector-db/faiss_store/
 vector-db/sources.json
+vector-db/documents.db

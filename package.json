@@ -21,18 +21,8 @@
     "files": [
       "build/**/*",
       "src/**/*",
-      "vector-db/**/*",
       "node_modules/**/*",
       "package.json"
-    ],
-    "extraResources": [
-      {
-        "from": "vector-db",
-        "to": "vector-db",
-        "filter": [
-          "**/*"
-        ]
-      }
     ],
     "mac": {
       "target": "dmg",
