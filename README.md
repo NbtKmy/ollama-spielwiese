@@ -32,6 +32,22 @@ Die App bietet drei verschiedene RAG-Modi für dokumentbasierte Suche:
 - Nutzt die Vorteile beider Ansätze
 - Beste Ergebnisse für komplexe Abfragen
 
+#### 4. GraphRAG (Graphbasierte Analyse)
+- Nutzt Knowledge Graph-Techniken für kontextbewusste Dokumentensuche
+- Extrahiert Entitäten und ihre Beziehungen aus Dokumenten
+- Verwendet PageRank-Algorithmus zur Bewertung der Chunk-Wichtigkeit
+- Kombiniert strukturelle Graphanalyse mit semantischer Vektorsuche
+
+**GraphRAG Ablauf:**
+1. **Query-Analyse**: LLM extrahiert relevante Keywords aus der Benutzeranfrage
+2. **Keyword-Matching**: Findet Chunks, die die extrahierten Keywords enthalten
+3. **Graph-Konstruktion**:
+   - Baut einen Graphen, wo Chunks Knoten und gemeinsame Entitäten Kanten sind
+   - Gewichtet Kanten basierend auf der Anzahl gemeinsamer Entitäten
+4. **PageRank-Ranking**: Bewertet Chunks nach ihrer strukturellen Wichtigkeit im Graphen
+5. **Vektoren-Reranking**: Verfeinert das Ranking mit semantischer Ähnlichkeitssuche
+6. **Kontext-Generierung**: Reichert die Top-Chunks mit ihren Graph-Nachbarn an
+
 ### Dokumentenverwaltung
 - PDF-Upload und automatische Verarbeitung
 - Chunks werden persistent in SQLite-Datenbank gespeichert
