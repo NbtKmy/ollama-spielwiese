@@ -168,6 +168,11 @@
         margin-bottom: 10px;
       }
 
+      .document-header > div:first-child {
+        min-width: 0;
+        flex: 1;
+      }
+
       .document-name {
         font-weight: 600;
         font-size: 16px;
@@ -176,10 +181,13 @@
         white-space: nowrap;
         max-width: 100%;
         position: relative;
-        display: inline-block;
+        display: block;
+        cursor: default;
+      }
+
+      .document-name.fade-out {
         -webkit-mask-image: linear-gradient(to right, black 85%, transparent 100%);
         mask-image: linear-gradient(to right, black 85%, transparent 100%);
-        cursor: default;
       }
 
       .document-meta {

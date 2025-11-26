@@ -15,6 +15,7 @@ const COMMON_EMBEDDING_MODELS = [
 let selectedChatModel = null;
 let isExtracting = false;
 let shouldStopExtraction = false;
+let currentExtractingPdf = null;
 
 // Check if the model is a recognized embedding model
 function isRecommendedEmbeddingModel(modelName) {
@@ -127,6 +128,24 @@ async function refreshDocumentList() {
 
       const isExtracted = progress.percentage === 100;
       const isPartiallyExtracted = progress.percentage > 0 && progress.percentage < 100;
+      const isCurrentlyExtracting = currentExtractingPdf === item.source;
+      const isWaiting = isExtracting && !isExtracted && !isCurrentlyExtracting;
+
+      // Determine button state and text
+      let buttonDisabled = isExtracted || isExtracting;
+      let buttonText;
+
+      if (isExtracted) {
+        buttonText = '✓ GraphRAG Extracted';
+      } else if (isCurrentlyExtracting) {
+        buttonText = '⏳ Extracting...';
+      } else if (isWaiting) {
+        buttonText = '⏸ Waiting...';
+      } else if (isPartiallyExtracted) {
+        buttonText = '⟳ Continue Extraction';
+      } else {
+        buttonText = '🕸️ Extract GraphRAG';
+      }
 
       documentItem.innerHTML = `
         <div class="document-header">
@@ -139,8 +158,8 @@ async function refreshDocumentList() {
           </div>
         </div>
         <div class="document-actions">
-          <button class="btn btn-small btn-extract" data-source="${item.source}" ${isExtracted ? 'disabled' : ''}>
-            ${isExtracted ? '✓ GraphRAG Extracted' : isPartiallyExtracted ? '⟳ Continue Extraction' : '🕸️ Extract GraphRAG'}
+          <button class="btn btn-small btn-extract" data-source="${item.source}" ${buttonDisabled ? 'disabled' : ''}>
+            ${buttonText}
           </button>
           <button class="btn btn-small btn-delete" data-source="${item.source}">
             🗑️ Delete
@@ -159,6 +178,18 @@ async function refreshDocumentList() {
       `;
 
       documentList.appendChild(documentItem);
+
+      // Check if document name needs fade-out effect
+      const documentNameEl = documentItem.querySelector('.document-name');
+      if (documentNameEl) {
+        // Use requestAnimationFrame to ensure the element is fully rendered
+        requestAnimationFrame(() => {
+          const isOverflowing = documentNameEl.scrollWidth > documentNameEl.clientWidth;
+          if (isOverflowing) {
+            documentNameEl.classList.add('fade-out');
+          }
+        });
+      }
     }
 
     // Add event listeners for extract buttons
@@ -217,11 +248,17 @@ async function extractGraphRAG(source, isBatchMode = false) {
       }
     }
 
+    // Set current extracting PDF
+    currentExtractingPdf = source;
+
     // Start extraction mode - show stop button (only for individual mode)
     if (!isBatchMode) {
       isExtracting = true;
       updateExtractionButtons(true);
     }
+
+    // Refresh document list to show current extraction status
+    await refreshDocumentList();
 
     // Use selected chat model or get first available
     let chatModel = selectedChatModel;
@@ -280,18 +317,25 @@ async function extractGraphRAG(source, isBatchMode = false) {
       progressCallback
     );
 
-    // Check one more time after extraction
-    if (shouldStopExtraction) {
-      console.log('[GraphRAG] Extraction completed but stopped by user');
-      return; // 静かに終了
-    }
-
     console.log('[GraphRAG] Extraction complete:', result);
 
-    // Update UI
+    // Update UI - ALWAYS update button state when extraction completes
     if (extractBtn) {
       extractBtn.textContent = '✓ GraphRAG Extracted';
       extractBtn.disabled = true;
+    }
+
+    // データベースから実際の進捗を確認（デバッグ用）
+    const actualProgress = window.electronAPI.getGraphRAGProgress(source);
+    console.log('[GraphRAG] Extraction result:', result);
+    console.log('[GraphRAG] Actual database progress:', actualProgress);
+
+    // Clear current extracting PDF
+    currentExtractingPdf = null;
+
+    // Refresh document list in batch mode to ensure UI consistency
+    if (isBatchMode) {
+      await refreshDocumentList();
     }
 
     // End extraction mode - hide stop button (only for individual mode)
@@ -301,11 +345,11 @@ async function extractGraphRAG(source, isBatchMode = false) {
       updateExtractionButtons(false);
     }
 
-    // Refresh document list to show updated status
-    await refreshDocumentList();
+    // Only show individual completion message if not in batch mode and not stopped
+    if (!isBatchMode && !shouldStopExtraction) {
+      // Refresh document list to show updated status (before alert)
+      await refreshDocumentList();
 
-    // Only show individual completion message if not in batch mode
-    if (!isBatchMode) {
       alert(
         `✓ GraphRAG Extraction Complete\n\n` +
         `Document: ${fileName}\n` +
@@ -314,9 +358,15 @@ async function extractGraphRAG(source, isBatchMode = false) {
         `Relationships found: ${result.relationships}\n` +
         `Mentions found: ${result.mentions}`
       );
+
+      // Refresh again to ensure button state is reflected
+      await refreshDocumentList();
     }
   } catch (error) {
     console.error('[ERROR] GraphRAG extraction failed:', error);
+
+    // Clear current extracting PDF
+    currentExtractingPdf = null;
 
     // Check if this was a user-initiated stop before resetting flags
     const wasStopped = shouldStopExtraction;
@@ -549,6 +599,7 @@ async function stopExtraction() {
   if (isExtracting) {
     shouldStopExtraction = true;
     isExtracting = false;
+    currentExtractingPdf = null;
     updateExtractionButtons(false);
     console.log('[DEBUG] Stop extraction requested');
 

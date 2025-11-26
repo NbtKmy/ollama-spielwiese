@@ -476,6 +476,10 @@ async function extractGraphRAGForDocument(source, chatModel, progressCallback = 
     const embeddingModel = embedder.model;
     await generateEntityEmbeddings(db, embeddingModel);
 
+    // 明示的にデータベースを保存して、すべてのデータが確実に永続化されるようにする
+    db.save();
+    console.log('[GraphRAG] Database saved after extraction completion');
+
     return {
       success: true,
       source,
