@@ -1,7 +1,16 @@
-<!doctype html><html lang="en"><head><meta charset="UTF-8"/><title>Manage RAG Documents</title><link rel="stylesheet" href="style.css"/><style>.manage-rag-container {
+<!doctype html><html lang="en"><head><meta charset="UTF-8"/><title>Manage RAG Documents</title><link rel="stylesheet" href="style.css"/><style>html, body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow-x: hidden;
+      }
+
+      .manage-rag-container {
         display: flex;
         flex-direction: column;
         height: 100vh;
+        width: 100vw;
         background: #1f2937;
         color: white;
       }
@@ -38,8 +47,12 @@
 
       .right-panel {
         flex: 1;
+        min-width: 0;
         padding: 20px;
         overflow-y: auto;
+        background: #1f2937;
+        display: flex;
+        flex-direction: column;
       }
 
       .section {
@@ -128,6 +141,9 @@
         display: flex;
         flex-direction: column;
         gap: 15px;
+        overflow-y: auto;
+        flex: 1;
+        max-height: calc(100vh - 200px);
       }
 
       .document-item {
@@ -149,6 +165,14 @@
         font-weight: 600;
         font-size: 16px;
         color: #f3f4f6;
+        overflow: hidden;
+        white-space: nowrap;
+        max-width: 100%;
+        position: relative;
+        display: inline-block;
+        -webkit-mask-image: linear-gradient(to right, black 85%, transparent 100%);
+        mask-image: linear-gradient(to right, black 85%, transparent 100%);
+        cursor: default;
       }
 
       .document-meta {
@@ -265,4 +289,4 @@
       .empty-state-icon {
         font-size: 48px;
         margin-bottom: 10px;
-      }</style><script defer="defer" src="manage-rag.js"></script></head><body class="dark bg-gray-900 text-white"><div class="manage-rag-container"><div class="header"><h1>📚 Manage RAG Documents</h1><p>Upload documents and extract GraphRAG entities</p></div><div class="main-content"><div class="left-panel"><div class="section"><div class="section-title">Embedding Model</div><div class="info-item"><div class="info-label">Current Model</div><div class="info-value" id="current-embed-model">Loading...</div></div></div><div class="section"><div class="section-title">Document Actions</div><div class="actions"><button id="upload-btn" class="btn btn-primary">📄 Upload Documents</button></div></div><div class="section"><div class="section-title">GraphRAG Extraction</div><div class="info-item" style="margin-bottom: 12px;"><div class="info-label">Chat Model for Extraction</div><select id="graph-model-select" class="model-select"><option value="">Loading models...</option></select></div><div class="actions"><button id="extract-all-btn" class="btn btn-extract">🕸️ Extract All Unprocessed</button> <button id="stop-extract-btn" class="btn btn-delete" style="display: none;">⏹️ Stop Extraction</button></div></div><div class="section"><div class="section-title">Statistics</div><div class="info-item"><div class="info-label">Total Documents</div><div class="info-value" id="stat-total-docs">0</div></div><div class="info-item"><div class="info-label">Fully Extracted</div><div class="info-value" id="stat-extracted-docs">0</div></div></div><div id="loading-indicator" class="loading-indicator hidden"><div class="spinner"></div><span>Processing...</span></div></div><div class="right-panel"><div class="section-title" style="margin-bottom: 15px;">Uploaded Documents</div><div class="document-list" id="document-list"><div class="empty-state"><div class="empty-state-icon">📭</div><p>No documents uploaded yet</p><p style="font-size: 12px; margin-top: 5px;">Click "Upload Documents" to get started</p></div></div></div></div></div><script src="../build/manage-rag.js"></script></body></html>
+      }</style><script defer="defer" src="manage-rag.js"></script></head><body class="dark bg-gray-900 text-white"><div class="manage-rag-container"><div class="header"><h1>Manage RAG Documents</h1><p>Upload documents and extract GraphRAG entities</p></div><div class="main-content"><div class="left-panel"><div class="section"><div class="section-title">Embedding Model</div><div class="info-item"><div class="info-label">Current Model</div><div class="info-value" id="current-embed-model">Loading...</div></div></div><div class="section"><div class="section-title">Document Actions</div><div class="actions"><button id="upload-btn" class="btn btn-primary">📄 Upload Documents</button></div></div><div class="section"><div class="section-title">GraphRAG Extraction</div><div class="info-item" style="margin-bottom: 12px;"><div class="info-label">Chat Model for Extraction</div><select id="graph-model-select" class="model-select"><option value="">Loading models...</option></select></div><div class="actions"><button id="extract-all-btn" class="btn btn-extract">🕸️ Extract All Unprocessed</button> <button id="stop-extract-btn" class="btn btn-delete" style="display: none;">⏹️ Stop Extraction</button></div></div><div class="section"><div class="section-title">Statistics</div><div class="info-item"><div class="info-label">Total Documents</div><div class="info-value" id="stat-total-docs">0</div></div><div class="info-item"><div class="info-label">Fully Extracted</div><div class="info-value" id="stat-extracted-docs">0</div></div></div><div id="loading-indicator" class="loading-indicator hidden"><div class="spinner"></div><span>Processing...</span></div></div><div class="right-panel"><div class="section-title" style="margin-bottom: 15px;">Uploaded Documents</div><div class="document-list" id="document-list"><div class="empty-state"><div class="empty-state-icon">📭</div><p>No documents uploaded yet</p><p style="font-size: 12px; margin-top: 5px;">Click "Upload Documents" to get started</p></div></div></div></div></div></body></html>

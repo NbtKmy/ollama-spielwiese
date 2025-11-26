@@ -95,6 +95,15 @@ async function loadModels() {
       alert(`Server Error: ${data.message}\n\nDetails: ${data.error}\n\nThe application may not work correctly.`);
     });
 
+    // manage-ragウィンドウから現在の埋め込みモデルを要求された時の処理
+    window.electronAPI.onRequestCurrentEmbedModel(() => {
+      const embedSelect = document.getElementById('embed-model');
+      if (embedSelect && embedSelect.value) {
+        // 現在選択されている埋め込みモデルをブロードキャスト
+        window.electronAPI.notifyEmbedModelChanged(embedSelect.value);
+      }
+    });
+
     // イベントリスナーを先に登録（これが最も重要）
     document.getElementById('send').addEventListener('click', async () => {
       const prompt = document.getElementById('prompt').value;
@@ -618,6 +627,9 @@ async function loadModels() {
         // 強制的に切り替え（forceフラグをtrue）
         await window.electronAPI.setEmbedderModel(selected, true);
       }
+
+      // すべてのウィンドウに変更を通知
+      window.electronAPI.notifyEmbedModelChanged(selected);
 
       // Note: File list refresh removed since PDF management moved to separate window
     });

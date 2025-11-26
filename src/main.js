@@ -228,6 +228,14 @@ ipcMain.handle('open-manage-rag-window', () => {
 
   manageRAGWindow.loadFile(managePath);
 
+  // ウィンドウがロードされた後、メインウィンドウに現在の埋め込みモデルを要求
+  manageRAGWindow.webContents.on('did-finish-load', () => {
+    // メインウィンドウに現在のモデルをブロードキャストするよう要求
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('request-current-embed-model');
+    }
+  });
+
   // クリック時にウィンドウを前面に表示
   manageRAGWindow.on('focus', () => {
     if (manageRAGWindow && !manageRAGWindow.isDestroyed()) {
@@ -238,4 +246,16 @@ ipcMain.handle('open-manage-rag-window', () => {
   manageRAGWindow.on('closed', () => {
     manageRAGWindow = null;
   });
+});
+
+// エンべディングモデル変更通知をすべてのウィンドウにブロードキャスト
+ipcMain.on('embed-model-changed', (event, modelName) => {
+  // メインウィンドウに通知
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    mainWindow.webContents.send('embed-model-changed', modelName);
+  }
+  // manage-ragウィンドウに通知
+  if (manageRAGWindow && !manageRAGWindow.isDestroyed()) {
+    manageRAGWindow.webContents.send('embed-model-changed', modelName);
+  }
 });

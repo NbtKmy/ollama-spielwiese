@@ -131,7 +131,7 @@ async function refreshDocumentList() {
       documentItem.innerHTML = `
         <div class="document-header">
           <div>
-            <div class="document-name">${fileName}</div>
+            <div class="document-name" title="${fileName}">${fileName}</div>
             <div class="document-meta">
               Model: ${item.models.join(', ')}
               ${progress.totalChunks > 0 ? `• Chunks: ${progress.totalChunks}` : ''}
@@ -198,7 +198,7 @@ async function refreshDocumentList() {
 }
 
 // Extract GraphRAG entities for a document
-async function extractGraphRAG(source) {
+async function extractGraphRAG(source, isBatchMode = false) {
   const fileName = source.split('/').pop();
   const safeId = source.replace(/[^a-zA-Z0-9]/g, '_');
   const progressContainer = document.getElementById(`progress-${safeId}`);
@@ -207,12 +207,21 @@ async function extractGraphRAG(source) {
   try {
     // Check if extraction should stop
     if (shouldStopExtraction) {
-      throw new Error('Extraction stopped by user');
+      // If not in batch mode, reset the flag and continue
+      if (!isBatchMode) {
+        console.log('[GraphRAG] Resetting stop flag for individual extraction');
+        shouldStopExtraction = false;
+      } else {
+        console.log('[GraphRAG] Extraction stopped by user for:', fileName);
+        return; // 静かに終了、エラーをスローしない
+      }
     }
 
-    // Start extraction mode - show stop button
-    isExtracting = true;
-    updateExtractionButtons(true);
+    // Start extraction mode - show stop button (only for individual mode)
+    if (!isBatchMode) {
+      isExtracting = true;
+      updateExtractionButtons(true);
+    }
 
     // Use selected chat model or get first available
     let chatModel = selectedChatModel;
@@ -243,7 +252,8 @@ async function extractGraphRAG(source) {
     const progressCallback = (progress) => {
       // Check stop flag during progress updates
       if (shouldStopExtraction) {
-        throw new Error('Extraction stopped by user');
+        console.log('[GraphRAG] Progress stopped by user');
+        return; // 静かに終了
       }
 
       if (progressContainer) {
@@ -272,7 +282,8 @@ async function extractGraphRAG(source) {
 
     // Check one more time after extraction
     if (shouldStopExtraction) {
-      throw new Error('Extraction stopped by user');
+      console.log('[GraphRAG] Extraction completed but stopped by user');
+      return; // 静かに終了
     }
 
     console.log('[GraphRAG] Extraction complete:', result);
@@ -283,24 +294,32 @@ async function extractGraphRAG(source) {
       extractBtn.disabled = true;
     }
 
-    // End extraction mode - hide stop button
-    isExtracting = false;
-    shouldStopExtraction = false;
-    updateExtractionButtons(false);
+    // End extraction mode - hide stop button (only for individual mode)
+    if (!isBatchMode) {
+      isExtracting = false;
+      shouldStopExtraction = false;
+      updateExtractionButtons(false);
+    }
 
     // Refresh document list to show updated status
     await refreshDocumentList();
 
-    alert(
-      `✓ GraphRAG Extraction Complete\n\n` +
-      `Document: ${fileName}\n` +
-      `Chunks processed: ${result.totalChunks}\n` +
-      `Entities found: ${result.entities}\n` +
-      `Relationships found: ${result.relationships}\n` +
-      `Mentions found: ${result.mentions}`
-    );
+    // Only show individual completion message if not in batch mode
+    if (!isBatchMode) {
+      alert(
+        `✓ GraphRAG Extraction Complete\n\n` +
+        `Document: ${fileName}\n` +
+        `Chunks processed: ${result.totalChunks}\n` +
+        `Entities found: ${result.entities}\n` +
+        `Relationships found: ${result.relationships}\n` +
+        `Mentions found: ${result.mentions}`
+      );
+    }
   } catch (error) {
     console.error('[ERROR] GraphRAG extraction failed:', error);
+
+    // Check if this was a user-initiated stop before resetting flags
+    const wasStopped = shouldStopExtraction;
 
     // Re-enable extract button
     if (extractBtn) {
@@ -308,10 +327,12 @@ async function extractGraphRAG(source) {
       extractBtn.textContent = '🕸️ Extract GraphRAG';
     }
 
-    // End extraction mode - hide stop button
-    isExtracting = false;
-    shouldStopExtraction = false;
-    updateExtractionButtons(false);
+    // End extraction mode - hide stop button (only for individual mode)
+    if (!isBatchMode) {
+      isExtracting = false;
+      shouldStopExtraction = false;
+      updateExtractionButtons(false);
+    }
 
     // Hide progress container
     if (progressContainer) {
@@ -319,7 +340,7 @@ async function extractGraphRAG(source) {
     }
 
     // Don't show alert if stopped by user
-    if (!shouldStopExtraction) {
+    if (!wasStopped) {
       alert(
         `⚠️ GraphRAG Extraction Failed\n\n` +
         `Error: ${error.message}\n\n` +
@@ -475,7 +496,7 @@ async function extractAllUnprocessed() {
       console.log(`[Batch] Processing document ${i + 1}/${unprocessedDocs.length}: ${doc.source}`);
 
       try {
-        await extractGraphRAG(doc.source);
+        await extractGraphRAG(doc.source, true); // Pass true for batch mode
         processedCount++;
       } catch (error) {
         console.error(`[Batch] Failed to extract ${doc.source}:`, error);
@@ -497,12 +518,15 @@ async function extractAllUnprocessed() {
       }
     }
 
+    // Check if extraction was stopped before resetting flags
+    const wasStopped = shouldStopExtraction;
+
     // End extraction mode
     isExtracting = false;
     shouldStopExtraction = false;
     updateExtractionButtons(false);
 
-    const message = shouldStopExtraction
+    const message = wasStopped
       ? `Extraction stopped!\n\nProcessed ${processedCount} of ${unprocessedDocs.length} document(s).\n\nYou can resume extraction at any time.`
       : `Batch extraction complete!\n\nProcessed ${processedCount} document(s).`;
 
@@ -531,7 +555,7 @@ async function stopExtraction() {
     // Refresh document list to reset all individual item states
     await refreshDocumentList();
 
-    alert('Stopping extraction after current document...\n\nProgress has been saved and you can resume later.');
+    // Note: メッセージはextractAllUnprocessed()の最後で一度だけ表示される
   }
 }
 
@@ -549,6 +573,12 @@ window.addEventListener('DOMContentLoaded', async () => {
   // Display current embedding model
   const currentEmbedModel = window.electronAPI.getCurrentEmbedderModel();
   document.getElementById('current-embed-model').textContent = currentEmbedModel;
+
+  // Listen for embedding model changes
+  window.electronAPI.onEmbedModelChanged((modelName) => {
+    console.log('[INFO] Embedding model changed to:', modelName);
+    document.getElementById('current-embed-model').textContent = modelName;
+  });
 
   // Load chat models for GraphRAG extraction
   const chatModels = await loadChatModels();
@@ -611,5 +641,16 @@ window.addEventListener('DOMContentLoaded', async () => {
   // Stop extraction button click handler
   document.getElementById('stop-extract-btn').addEventListener('click', () => {
     stopExtraction();
+  });
+
+  // ウィンドウを閉じる際にエンティティ抽出を停止
+  window.addEventListener('beforeunload', () => {
+    if (isExtracting) {
+      console.log('[DEBUG] Window closing during extraction, stopping extraction...');
+      shouldStopExtraction = true;
+      isExtracting = false;
+      // Note: beforeunloadではasync処理やalertは制限されているため、
+      // フラグのみを設定して、進行中の処理が自然に停止するようにする
+    }
   });
 });

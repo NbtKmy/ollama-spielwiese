@@ -1407,9 +1407,22 @@ contextBridge.exposeInMainWorld('electronAPI', {
   getServerPort: () => ipcRenderer.invoke('get-server-port'),
   onServerError: (callback) => ipcRenderer.on('server-error', (_event, data) => callback(data)),
   onGraphRAGProgress: (callback) => ipcRenderer.on('graphrag-progress', (_event, data) => callback(data)),
+  onEmbedModelChanged: (callback) => ipcRenderer.on('embed-model-changed', (_event, modelName) => callback(modelName)),
+  notifyEmbedModelChanged: (modelName) => ipcRenderer.send('embed-model-changed', modelName),
+  onRequestCurrentEmbedModel: (callback) => ipcRenderer.on('request-current-embed-model', callback),
 });
 
 console.log('[DEBUG] electronAPI.openFileDialog:', typeof window.electronAPI?.openFileDialog);
+
+// embed-model-changedイベントを受け取って、embedderを更新
+ipcRenderer.on('embed-model-changed', (_event, modelName) => {
+  console.log('[INFO] Embedding model changed event received in preload:', modelName);
+  // embedderオブジェクトを更新（但しsetEmbedderModelは呼ばない、DBのクリアは不要なため）
+  if (embedder.model !== modelName) {
+    embedder = new OllamaEmbeddings({ model: modelName });
+    console.log('[INFO] Updated embedder object to:', modelName);
+  }
+});
 
 // Preload時にベクターストアをバックグラウンドでロード
 loadVectorStore().catch(() => {
