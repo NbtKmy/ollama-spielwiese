@@ -232,8 +232,6 @@ async function refreshDocumentList() {
 async function extractGraphRAG(source, isBatchMode = false) {
   const fileName = source.split('/').pop();
   const safeId = source.replace(/[^a-zA-Z0-9]/g, '_');
-  const progressContainer = document.getElementById(`progress-${safeId}`);
-  const extractBtn = document.querySelector(`.btn-extract[data-source="${source}"]`);
 
   try {
     // Check if extraction should stop
@@ -259,6 +257,10 @@ async function extractGraphRAG(source, isBatchMode = false) {
 
     // Refresh document list to show current extraction status
     await refreshDocumentList();
+
+    // Get references after DOM refresh
+    const progressContainer = document.getElementById(`progress-${safeId}`);
+    const extractBtn = document.querySelector(`.btn-extract[data-source="${source}"]`);
 
     // Use selected chat model or get first available
     let chatModel = selectedChatModel;
@@ -293,9 +295,12 @@ async function extractGraphRAG(source, isBatchMode = false) {
         return; // 静かに終了
       }
 
-      if (progressContainer) {
-        const progressBar = progressContainer.querySelector('.progress-bar');
-        const progressText = progressContainer.querySelector('.progress-text');
+      // Re-get progress container to ensure we have the latest reference
+      const currentProgressContainer = document.getElementById(`progress-${safeId}`);
+
+      if (currentProgressContainer) {
+        const progressBar = currentProgressContainer.querySelector('.progress-bar');
+        const progressText = currentProgressContainer.querySelector('.progress-text');
 
         const percentage = Math.round((progress.processed / progress.total) * 100);
 
@@ -319,10 +324,13 @@ async function extractGraphRAG(source, isBatchMode = false) {
 
     console.log('[GraphRAG] Extraction complete:', result);
 
+    // Get current extract button reference
+    const currentExtractBtn = document.querySelector(`.btn-extract[data-source="${source}"]`);
+
     // Update UI - ALWAYS update button state when extraction completes
-    if (extractBtn) {
-      extractBtn.textContent = '✓ GraphRAG Extracted';
-      extractBtn.disabled = true;
+    if (currentExtractBtn) {
+      currentExtractBtn.textContent = '✓ GraphRAG Extracted';
+      currentExtractBtn.disabled = true;
     }
 
     // データベースから実際の進捗を確認（デバッグ用）
@@ -371,10 +379,14 @@ async function extractGraphRAG(source, isBatchMode = false) {
     // Check if this was a user-initiated stop before resetting flags
     const wasStopped = shouldStopExtraction;
 
+    // Get current references to DOM elements
+    const currentExtractBtn = document.querySelector(`.btn-extract[data-source="${source}"]`);
+    const currentProgressContainer = document.getElementById(`progress-${safeId}`);
+
     // Re-enable extract button
-    if (extractBtn) {
-      extractBtn.disabled = false;
-      extractBtn.textContent = '🕸️ Extract GraphRAG';
+    if (currentExtractBtn) {
+      currentExtractBtn.disabled = false;
+      currentExtractBtn.textContent = '🕸️ Extract GraphRAG';
     }
 
     // End extraction mode - hide stop button (only for individual mode)
@@ -385,8 +397,8 @@ async function extractGraphRAG(source, isBatchMode = false) {
     }
 
     // Hide progress container
-    if (progressContainer) {
-      progressContainer.classList.remove('active');
+    if (currentProgressContainer) {
+      currentProgressContainer.classList.remove('active');
     }
 
     // Don't show alert if stopped by user

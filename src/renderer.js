@@ -114,7 +114,11 @@ async function loadModels() {
       const top_p = parseFloat(document.getElementById('top_p').value);
       const top_k = parseInt(document.getElementById('top_k').value);
       const seed = parseInt(document.getElementById('seed').value);
-      const useRag = document.getElementById('use-rag-checkbox').checked;
+
+      // Get RAG settings
+      const useChunkRAG = document.getElementById('use-rag-checkbox').checked;
+      const useGraphRAG = document.getElementById('use-graphrag-checkbox').checked;
+      const useRag = useChunkRAG || useGraphRAG; // RAG is enabled if either is checked
 
       if (!isChatActive) {
         messages = [];
@@ -134,9 +138,6 @@ async function loadModels() {
 
       if (useRag) {
         try {
-          // Get RAG settings
-          const useChunkRAG = document.getElementById('use-rag-checkbox').checked;
-          const useGraphRAG = document.getElementById('use-graphrag-checkbox').checked;
           const ragMode = document.querySelector('input[name="rag-mode"]:checked').value;
 
           console.log('[DEBUG] RAG Settings:', { useChunkRAG, useGraphRAG, ragMode });
